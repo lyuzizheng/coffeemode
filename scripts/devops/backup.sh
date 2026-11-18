@@ -302,7 +302,14 @@ if [[ "$BACKUP_TYPE" == "vol" || "$BACKUP_TYPE" == "full" ]]; then
   VOL_CHECKSUM_FILE="${VOL_ARCHIVE_FILE}.sha256"
 
   if [ "$DRY_RUN" = false ]; then
+    # Real env files are credential stores, not configuration: `.env.prod.db`
+    # holds the Postgres bootstrap password, `.env.prod`/`.env.staging` hold
+    # connection strings. Only the tracked `.example` templates belong in an
+    # archive that is uploaded offsite (BRAWUKA-1015).
     tar -czf "$VOL_ARCHIVE_FILE" -C "${REPO_ROOT}" \
+      --exclude=".env.prod.db" \
+      --exclude=".env.prod" \
+      --exclude=".env.staging" \
       "deploy/dokploy" \
       "scripts/devops" 2>/dev/null || true
 

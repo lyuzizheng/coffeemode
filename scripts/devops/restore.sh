@@ -17,9 +17,10 @@
 #      PostGIS extension, every archived relation present, no relation outside
 #      the archive, row counts, spatial queries
 #   7. --recreate rollback: restore and verify a replacement database first,
-#      then swap it in and retire the old one
+#      then promote it in one database-rename transaction and retire the old one
 #   8. Non-destructive drill mode (--drill): restores into a scratch database on
-#      the STAGING database, verifies, then drops it
+#      the STAGING database, verifies the seeded contract (a drill never passes
+#      on an empty baseline archive), then drops it
 #
 # Verdict (BRAWUKA-728): an unreadable archive, a nonzero pg_restore exit, or a
 # failed verification query fails the run in BOTH modes — drill mode never
@@ -738,6 +739,12 @@ if [ "$DRY_RUN" = false ]; then
       exit 1
     fi
     ok "PostGIS spatial query test returned ${SPATIAL_CHECK} cafe(s) in range."
+  elif [ "$DRILL_MODE" = true ]; then
+    # A drill certifies that the application restores. An archive that predates
+    # the migrations cannot certify that: it has no cafes table, so the spatial
+    # contract never ran. Live rollback to such a snapshot is still valid.
+    error "Drill verification FAILED on ${RESTORE_LABEL}: --drill requires a migrated, seeded archive (cafes/checkins/profiles with rows and a spatial query). This archive is an empty-schema baseline; use it only for a --recreate rollback."
+    exit 1
   else
     ok "Baseline archive (no application tables): verified as an empty-schema snapshot."
   fi
@@ -811,13 +818,29 @@ if [ "$RECREATE_TARGET" = true ] && [ "$DRY_RUN" = false ]; then
   pg_run psql "$ADMIN_URL" -v ON_ERROR_STOP=1 -q \
     -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname IN ('${TARGET_DB}', '${REPLACEMENT_DB}') AND pid <> pg_backend_pid();" >/dev/null
   RETIRED_DB="${TARGET_DB}__retired_$(date -u +%Y%m%d_%H%M%S)_$$"
-  pg_run psql "$ADMIN_URL" -v ON_ERROR_STOP=1 -q \
-    -c "ALTER DATABASE \"${TARGET_DB}\" RENAME TO \"${RETIRED_DB}\";" >/dev/null
-  pg_run psql "$ADMIN_URL" -v ON_ERROR_STOP=1 -q \
-    -c "ALTER DATABASE \"${REPLACEMENT_DB}\" RENAME TO \"${TARGET_DB}\";" >/dev/null
+  # Atomic promotion (BRAWUKA-1015 P1). Both renames commit together, so there
+  # is no window where the live name points at nothing: a client killed before
+  # COMMIT leaves the server to abort the transaction, and the original name
+  # keeps serving the original data, ledger and owners.
+  #
+  # RESTORE_SWAP_TEST_PAUSE_SECONDS is a test-only fault injection: it holds the
+  # promotion transaction open so an integration test can interrupt it before
+  # commit. It is never set by an operator.
+  SWAP_PAUSE="${RESTORE_SWAP_TEST_PAUSE_SECONDS:-0}"
+  [[ "$SWAP_PAUSE" =~ ^[0-9]+$ ]] || SWAP_PAUSE=0
+  swap_sql="BEGIN; ALTER DATABASE \"${TARGET_DB}\" RENAME TO \"${RETIRED_DB}\";"
+  if [ "$SWAP_PAUSE" -gt 0 ]; then
+    swap_sql+=" SELECT pg_sleep(${SWAP_PAUSE});"
+  fi
+  swap_sql+=" ALTER DATABASE \"${REPLACEMENT_DB}\" RENAME TO \"${TARGET_DB}\"; COMMIT;"
+  pg_run psql "$ADMIN_URL" -v ON_ERROR_STOP=1 -q -c "$swap_sql" >/dev/null
   REPLACEMENT_DB=""
-  pg_run psql "$ADMIN_URL" -v ON_ERROR_STOP=1 -q \
-    -c "DROP DATABASE \"${RETIRED_DB}\" WITH (FORCE);" >/dev/null
+  if pg_run psql "$ADMIN_URL" -v ON_ERROR_STOP=1 -q \
+    -c "DROP DATABASE \"${RETIRED_DB}\" WITH (FORCE);" >/dev/null; then
+    ok "Promotion committed; retired copy '${RETIRED_DB}' removed."
+  else
+    warn "Promotion committed, but retired database '${RETIRED_DB}' could not be dropped. It no longer serves traffic; drop it manually after confirming the promoted database."
+  fi
   if [[ -n "$EXPECTED_DB_OWNER" ]]; then
     promoted_owner="$(pg_run psql "$ADMIN_URL" -v ON_ERROR_STOP=1 -t -A -c "SELECT pg_get_userbyid(datdba) FROM pg_database WHERE datname = '${TARGET_DB}';" < /dev/null)"
     promoted_owner="${promoted_owner//[[:space:]]/}"
@@ -826,7 +849,7 @@ if [ "$RECREATE_TARGET" = true ] && [ "$DRY_RUN" = false ]; then
       exit 1
     fi
   fi
-  ok "Swap complete: '${TARGET_DB}' now serves the verified archive; old data dropped."
+  ok "Promotion complete: '${TARGET_DB}' serves the verified archive."
 fi
 
 # Cleanup temp downloads

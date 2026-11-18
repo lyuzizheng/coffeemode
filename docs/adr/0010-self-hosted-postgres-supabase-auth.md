@@ -113,10 +113,12 @@ spec 0010 are updated to this topology.
   on every exit path.
 - `--recreate` (rollback) does not drop the live database. It creates a
   replacement database with the target's original owner, restores into it,
-  performs the full verification there, and only then renames the old database
-  to `<db>__retired_<timestamp>`, renames the replacement to the live name, and
-  drops the retired copy. A failure anywhere before the swap drops the
-  replacement and leaves the live database untouched. The recovery role must be
+  performs the full verification there, and only then promotes it: both
+  database renames commit in one transaction, so an interrupted promotion
+  aborts as a unit and the original name keeps serving the original data,
+  ledger and owners. The retired copy is dropped afterwards. A failure anywhere
+  before promotion drops the replacement and leaves the live database
+  untouched. The recovery role must be
   a superuser, and the target must exist with a readable owner, before any of
   this starts.
 - Both scripts choose the client that matches the server major through
@@ -162,7 +164,8 @@ BRAWUKA-1011 executes this after the code gates:
 6. Backup/restore evidence: one real `backup.sh --env prod` to R2 and one
    `restore.sh` drill recorded on the issue.
 7. Rollback: `restore.sh --env prod --file <pre-migration snapshot> --recreate
-   --yes`, which builds and verifies a replacement database, then swaps it in.
+   --yes`, which builds and verifies a replacement database, then promotes it
+   atomically.
    In-place `pg_restore --clean` is **not** a rollback: it cannot drop the
    PostGIS extension while dependent objects exist and the migration ledger
    survives. The relation-set check (no relation outside the archive) is what

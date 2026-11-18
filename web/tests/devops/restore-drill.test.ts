@@ -1,4 +1,4 @@
-import { execFileSync, execSync } from "node:child_process";
+import { execFileSync, execSync, spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
@@ -11,6 +11,7 @@ import {
   integrationAdminUrl,
   makeTestDbName,
   provisionTestDatabase,
+  quotedIdentifier,
   testDatabaseUrl,
 } from "../helpers/db";
 import { SERVICE_ACCOUNT_ID, seedBaseData } from "../helpers/fixtures";
@@ -458,6 +459,7 @@ describe("Recovery drill — failure lifecycle (BRAWUKA-728)", () => {
     expect(run.status).toBe(0);
     expect(run.output).toContain("PASSED");
     expect(run.output).toContain("cafes=12");
+    expect(run.invocations).toContain("ST_DWithin");
     const scratchDb = scratchDbFrom(run.invocations);
     expect(run.invocations).toContain(`CREATE DATABASE "${scratchDb}"`);
     expect(run.output).toContain("Scratch drill database removed");
@@ -509,10 +511,15 @@ describe("Recovery drill — failure lifecycle (BRAWUKA-728)", () => {
     expect(replacement, "no replacement database was created").not.toBeNull();
     const replacementDb = replacement?.[1] ?? "";
     expect(urlPassedToRestore(run.invocations)).toContain(`/${replacementDb}`);
-    expect(run.invocations).toContain(`ALTER DATABASE "coffeemode" RENAME TO "coffeemode__retired_`);
-    expect(run.invocations).toContain(`ALTER DATABASE "${replacementDb}" RENAME TO "coffeemode"`);
+    // Atomic promotion: both renames and their commit live in one psql -c.
+    const promotion = run.invocations
+      .split("\n")
+      .find((line) => line.includes("BEGIN;") && line.includes("COMMIT;"));
+    expect(promotion, "no single-transaction promotion was issued").toBeDefined();
+    expect(promotion ?? "").toContain(`ALTER DATABASE "coffeemode" RENAME TO "coffeemode__retired_`);
+    expect(promotion ?? "").toContain(`ALTER DATABASE "${replacementDb}" RENAME TO "coffeemode"`);
     expect(run.output).toContain("Application objects in 'public' are owned by 'coffeemode'");
-    expect(run.output).toContain("Swap complete");
+    expect(run.output).toContain("Promotion complete");
     expect(run.invocations).toContain(`DROP DATABASE "coffeemode__retired_`);
   });
 
@@ -543,6 +550,18 @@ describe("Recovery drill — failure lifecycle (BRAWUKA-728)", () => {
     expect(run.invocations).not.toContain("pg_restore -d");
   });
 
+  it("fails a drill on a baseline archive that predates the migrations", () => {
+    const run = runRestore(["--env", "staging", "--file", dumpFixture, "--drill"], {
+      STUB_ARCHIVED_TABLES: "",
+    });
+
+    expect(run.status).not.toBe(0);
+    expect(run.output).not.toContain("PASSED");
+    expect(run.output).toContain("--drill requires a migrated, seeded archive");
+    // The refusal names the archive as a rollback baseline, not a drill sample.
+    expect(run.output).toContain("empty-schema baseline");
+  });
+
   it("accepts a baseline archive that predates the migrations", () => {
     // A pre-migration snapshot has no application relations. Verification must
     // judge the restore against that baseline instead of demanding `cafes`.
@@ -553,7 +572,7 @@ describe("Recovery drill — failure lifecycle (BRAWUKA-728)", () => {
 
     expect(run.status).toBe(0);
     expect(run.output).toContain("Baseline archive (no application tables)");
-    expect(run.output).toContain("Swap complete");
+    expect(run.output).toContain("Promotion complete");
     // A rollback to that snapshot removes the migration ledger (33 entries).
     expect(run.invocations).toContain('RENAME TO "coffeemode"');
   });
@@ -581,7 +600,7 @@ describe("Recovery drill — failure lifecycle (BRAWUKA-728)", () => {
     expect(run.status).toBe(0);
     expect(run.invocations).toContain('OWNER "someone_else"');
     expect(run.output).toContain("Database owner verified: someone_else");
-    expect(run.output).toContain("Swap complete");
+    expect(run.output).toContain("Promotion complete");
   });
 
   it("refuses to recreate a maintenance database", () => {
@@ -611,6 +630,9 @@ describeIntegration("Recovery drill — real custom archive (BRAWUKA-753)", () =
   let archive = "";
   let archiveGz = "";
   let rawBytes = 0;
+  // Independently derived from the fixture database itself — never from the
+  // restore script's own table-of-contents parse (BRAWUKA-1015 review).
+  let expectedRelations: string[] = [];
   const seeded = { cafes: 0, checkins: 0, profiles: 0 };
 
   beforeAll(async () => {
@@ -622,6 +644,7 @@ describeIntegration("Recovery drill — real custom archive (BRAWUKA-753)", () =
     const sourceUrl = testDatabaseUrl(adminUrl, sourceDb);
     await provisionTestDatabase(adminUrl, sourceDb, { useTemplate: true });
     Object.assign(seeded, await seedDumpSource(sourceUrl));
+    expectedRelations = await publicRelationNames(sourceUrl);
     archive = path.join(tmpRoot, "real-snapshot.dump");
     archiveGz = `${archive}.gz`;
     // BRAWUKA-1015: dump through the same client-mode decision backup.sh uses.
@@ -668,7 +691,9 @@ describeIntegration("Recovery drill — real custom archive (BRAWUKA-753)", () =
       );
 
       expect(run.status).toBe(0);
-      expect(run.output).toContain("Archive verified: 3 application relation(s) in its table of contents.");
+      expect(run.output).toContain(
+        `Archive verified: ${expectedRelations.length} application relation(s) in its table of contents.`,
+      );
       expect(run.output).toContain("PASSED");
       expect(run.output).toContain(`Row count: cafes=${seeded.cafes}`);
       expect(run.output).toContain(`Row count: checkins=${seeded.checkins}`);
@@ -709,7 +734,9 @@ describeIntegration("Recovery drill — real custom archive (BRAWUKA-753)", () =
 
         expect(run.status).toBe(0);
         expect(run.output).toContain("LIVE RESTORATION");
-        expect(run.output).toContain("Archive verified: 3 application relation(s) in its table of contents.");
+        expect(run.output).toContain(
+          `Archive verified: ${expectedRelations.length} application relation(s) in its table of contents.`,
+        );
         expect(run.output).toContain("Database Restoration Completed Successfully!");
 
         // The drill's own report is not the evidence: read the target back.
@@ -729,6 +756,155 @@ describeIntegration("Recovery drill — real custom archive (BRAWUKA-753)", () =
         }
       } finally {
         await cleanupIntegrationDatabase(adminUrl, targetDb);
+      }
+    },
+  );
+
+  it.skipIf(!hasPostgresClientTools)(
+    "keeps the original database live when promotion is interrupted before commit",
+    async () => {
+      const targetDb = makeTestDbName("restore_promote");
+      const targetUrl = testDatabaseUrl(adminUrl, targetDb);
+      await provisionTestDatabase(adminUrl, targetDb, { useTemplate: true });
+
+      const ownerOf = async (sql: string) => {
+        const client = new pg.Client({ connectionString: adminUrl });
+        await client.connect();
+        try {
+          const { rows } = await client.query<{ owner: string }>(sql);
+          return rows[0].owner;
+        } finally {
+          await client.end();
+        }
+      };
+      const before = new pg.Client({ connectionString: targetUrl });
+      await before.connect();
+      let ledgerBefore = 0;
+      try {
+        await before.query("create table pre_promotion_marker (id int)");
+        await before.query("insert into pre_promotion_marker values (42)");
+        ledgerBefore = (
+          await before.query<{ c: number }>("select count(*)::int as c from schema_migrations")
+        ).rows[0].c;
+      } finally {
+        await before.end();
+      }
+      const dbOwnerBefore = await ownerOf(
+        `select pg_get_userbyid(datdba) as owner from pg_database where datname = '${targetDb}'`,
+      );
+      const schemaOwnerBefore = await ownerOf(
+        "select pg_get_userbyid(nspowner) as owner from pg_namespace where nspname = 'public'",
+      );
+
+      // Hold the promotion transaction open, then kill the whole process group:
+      // the client dies before COMMIT, so the server must abort both renames.
+      const child = spawn(
+        "bash",
+        [RESTORE, "--env", "prod", "--file", archiveGz, "--recreate", "--yes", "--url", targetUrl],
+        {
+          env: { ...process.env, RESTORE_SWAP_TEST_PAUSE_SECONDS: "15" },
+          detached: true,
+          stdio: ["ignore", "pipe", "pipe"],
+        },
+      );
+      let output = "";
+      child.stdout?.on("data", (chunk: Buffer) => {
+        output += chunk.toString();
+      });
+      child.stderr?.on("data", (chunk: Buffer) => {
+        output += chunk.toString();
+      });
+      const exited = new Promise<number | null>((resolve) => child.on("exit", (code) => resolve(code)));
+      const deadline = Date.now() + 60_000;
+      while (!output.includes("Step 7:") && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+      expect(output, "the promotion step never started").toContain("Step 7:");
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      process.kill(-(child.pid as number), "SIGTERM");
+      const code = await exited;
+      expect(code).not.toBe(0);
+
+      // Original endpoint still serves the original data, ledger and owners.
+      const after = new pg.Client({ connectionString: targetUrl });
+      await after.connect();
+      try {
+        const marker = await after.query<{ c: number }>("select count(*)::int as c from pre_promotion_marker");
+        expect(marker.rows[0].c).toBe(1);
+        const ledgerAfter = await after.query<{ c: number }>("select count(*)::int as c from schema_migrations");
+        expect(ledgerAfter.rows[0].c).toBe(ledgerBefore);
+      } finally {
+        await after.end();
+      }
+      expect(
+        await ownerOf(`select pg_get_userbyid(datdba) as owner from pg_database where datname = '${targetDb}'`),
+      ).toBe(dbOwnerBefore);
+      expect(
+        await ownerOf(`select pg_get_userbyid(nspowner) as owner from pg_namespace where nspname = 'public'`),
+      ).toBe(schemaOwnerBefore);
+      // No retired name survived; the replacement is inert and removed here.
+      const admin = new pg.Client({ connectionString: adminUrl });
+      await admin.connect();
+      try {
+        const leftovers = await admin.query<{ datname: string }>(
+          `select datname from pg_database where datname like '${targetDb}__%'`,
+        );
+        expect(leftovers.rows.map((row) => row.datname)).toEqual([]);
+      } finally {
+        await admin.end();
+      }
+      await cleanupIntegrationDatabase(adminUrl, targetDb);
+    },
+  );
+
+  it.skipIf(!hasPostgresClientTools)(
+    "fails a drill on a real pre-migration baseline archive",
+    async () => {
+      const baselineDb = makeTestDbName("restore_baseline");
+      const baselineUrl = testDatabaseUrl(adminUrl, baselineDb);
+      // A pre-migration database: no migrations, no application schema.
+      const admin = new pg.Client({ connectionString: adminUrl });
+      await admin.connect();
+      try {
+        await admin.query(`drop database if exists ${quotedIdentifier(baselineDb)} with (force)`);
+        await admin.query(`create database ${quotedIdentifier(baselineDb)}`);
+      } finally {
+        await admin.end();
+      }
+      const baselineArchive = path.join(tmpRoot, "baseline.dump");
+      try {
+        const client = new pg.Client({ connectionString: baselineUrl });
+        await client.connect();
+        try {
+          // Provisioning creates PostGIS before the first snapshot.
+          await client.query("create extension if not exists postgis");
+        } finally {
+          await client.end();
+        }
+        const dump = [
+          "set -euo pipefail",
+          `source "${path.join(REPO_ROOT, "scripts/devops/lib/pg-client.sh")}"`,
+          'pg_client_plan "$1" pg_dump',
+          'pg_run pg_dump "$1" -Fc',
+        ].join("\n");
+        const fd = fs.openSync(baselineArchive, "w");
+        try {
+          execFileSync("bash", ["-c", dump, "--", baselineUrl], { stdio: ["ignore", fd, "inherit"] });
+        } finally {
+          fs.closeSync(fd);
+        }
+
+        const run = runRestore(
+          ["--env", "staging", "--file", baselineArchive, "--drill"],
+          { STAGING_DIRECT_URL: adminUrl },
+          { stubs: false },
+        );
+        expect(run.status).not.toBe(0);
+        expect(run.output).toContain("--drill requires a migrated, seeded archive");
+        expect(run.output).not.toContain("PASSED");
+      } finally {
+        fs.rmSync(baselineArchive, { force: true });
+        await cleanupIntegrationDatabase(adminUrl, baselineDb);
       }
     },
   );
@@ -755,6 +931,29 @@ describeIntegration("Recovery drill — real custom archive (BRAWUKA-753)", () =
     },
   );
 });
+
+/** Application relation names in `public`, excluding extension-owned members. */
+async function publicRelationNames(url: string): Promise<string[]> {
+  const client = new pg.Client({ connectionString: url });
+  await client.connect();
+  try {
+    const { rows } = await client.query<{ relname: string }>(
+      `select c.relname
+         from pg_class c
+         join pg_namespace n on n.oid = c.relnamespace
+        where n.nspname = 'public'
+          and c.relkind in ('r','p','v','m','S','f')
+          and not exists (
+            select 1 from pg_depend d
+             where d.classid = 'pg_class'::regclass and d.objid = c.oid and d.deptype = 'e'
+          )
+        order by c.relname`,
+    );
+    return rows.map((row) => row.relname);
+  } finally {
+    await client.end();
+  }
+}
 
 /** Seed the dump source with the required tables and a payload past the pipe buffer. */
 async function seedDumpSource(

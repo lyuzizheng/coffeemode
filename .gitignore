@@ -24,6 +24,9 @@ backups/
 *.dump.gz
 deploy/dokploy/.env.staging
 deploy/dokploy/.env.prod
+# Bootstrap credentials for db-prod (POSTGRES_*, APP_DB_PASSWORD): local only,
+# never tracked. The tracked template is `.env.prod.db.example`.
+deploy/dokploy/.env.prod.db
 
 # Raw dataset snapshots (no reader in repo; BRAWUKA-188 removed the last
 # tracked Mongo-style snapshot `database-data/cafes.json`, superseded by

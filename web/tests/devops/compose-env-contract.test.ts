@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -127,6 +127,47 @@ describe("prod compose environment contract", () => {
       expect(db.APP_DB_PASSWORD).toBe("app-db-secret-value");
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps the real bootstrap env file out of Git and configuration archives", () => {
+    // Git: the tracked example stays, the real credential file is ignored.
+    expect(execFileSync("git", ["-C", REPO_ROOT, "ls-files", "deploy/dokploy/.env.prod.db.example"], { encoding: "utf8" }).trim()).not.toBe("");
+    const ignored = spawnSync("git", ["-C", REPO_ROOT, "check-ignore", "-q", "deploy/dokploy/.env.prod.db"]);
+    expect(ignored.status, "deploy/dokploy/.env.prod.db must be gitignored").toBe(0);
+
+    // Configuration archive: a synthetic credential file must not be packaged.
+    const marker = `synthetic-marker-${process.pid}-${Date.now()}`;
+    const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), "coffeemode-config-archive-"));
+    try {
+      fs.cpSync(path.join(REPO_ROOT, "scripts/devops"), path.join(sandbox, "scripts/devops"), { recursive: true });
+      fs.mkdirSync(path.join(sandbox, "deploy/dokploy"), { recursive: true });
+      fs.copyFileSync(COMPOSE, path.join(sandbox, "deploy/dokploy/docker-compose.prod.yml"));
+      fs.writeFileSync(path.join(sandbox, "deploy/dokploy/.env.prod.db"), `POSTGRES_PASSWORD=${marker}\n`);
+      fs.writeFileSync(path.join(sandbox, "deploy/dokploy/.env.prod"), `DATABASE_URL=postgres://app:${marker}@db.invalid/coffeemode\n`);
+      fs.writeFileSync(path.join(sandbox, "deploy/dokploy/.env.prod.db.example"), "POSTGRES_PASSWORD=CHANGE_ME\n");
+      const out = path.join(sandbox, "out");
+      execFileSync(
+        "bash",
+        [path.join(sandbox, "scripts/devops/backup.sh"), "--env", "prod", "--type", "vol", "--no-upload-r2", "--output-dir", out],
+        { encoding: "utf8", env: { ...process.env, R2_ACCESS_KEY_ID: "", R2_SECRET_ACCESS_KEY: "" } },
+      );
+      const archive = fs.readdirSync(out).filter((name) => name.endsWith(".tar.gz")).sort().pop();
+      expect(archive, "configuration archive was not created").toBeDefined();
+      const entries = execFileSync("tar", ["-tzf", path.join(out, archive ?? "")], { encoding: "utf8" });
+      expect(entries).toContain("deploy/dokploy/docker-compose.prod.yml");
+      expect(entries).toContain("deploy/dokploy/.env.prod.db.example");
+      expect(entries).not.toContain("deploy/dokploy/.env.prod.db\n");
+      expect(entries.split("\n")).not.toContain("deploy/dokploy/.env.prod.db");
+      expect(entries.split("\n")).not.toContain("deploy/dokploy/.env.prod");
+      // Not just the name: no packaged file may carry the marker value.
+      const extracted = path.join(sandbox, "extracted");
+      fs.mkdirSync(extracted);
+      execFileSync("tar", ["-xzf", path.join(out, archive ?? ""), "-C", extracted]);
+      const hit = spawnSync("grep", ["-rl", marker, extracted], { encoding: "utf8" });
+      expect(hit.status, "the bootstrap marker leaked into the configuration archive").toBe(1);
+    } finally {
+      fs.rmSync(sandbox, { recursive: true, force: true });
     }
   });
 });

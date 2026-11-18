@@ -557,9 +557,28 @@ describe("Recovery drill — failure lifecycle (BRAWUKA-728)", () => {
 
     expect(run.status).not.toBe(0);
     expect(run.output).not.toContain("PASSED");
-    expect(run.output).toContain("--drill requires a migrated, seeded archive");
-    // The refusal names the archive as a rollback baseline, not a drill sample.
-    expect(run.output).toContain("empty-schema baseline");
+    expect(run.output).toContain("requires cafes, checkins and profiles");
+    expect(run.output).toContain("missing from the archive: cafes,checkins,profiles");
+  });
+
+  it("fails a drill when a required application table is missing", () => {
+    const run = runDrill({ STUB_ARCHIVED_TABLES: "cafes", STUB_COUNTS: "cafes=12" });
+
+    expect(run.status).not.toBe(0);
+    expect(run.output).not.toContain("PASSED");
+    expect(run.output).toContain("requires cafes, checkins and profiles");
+    expect(run.output).toContain("missing from the archive: checkins,profiles");
+  });
+
+  it("fails a drill when the spatial query matches no cafe", () => {
+    const run = runDrill({
+      STUB_COUNTS: "cafes=12 checkins=34 profiles=5",
+      STUB_SPATIAL_COUNT: "0",
+    });
+
+    expect(run.status).not.toBe(0);
+    expect(run.output).not.toContain("PASSED");
+    expect(run.output).toContain("the spatial query matched 0 cafe(s)");
   });
 
   it("accepts a baseline archive that predates the migrations", () => {
@@ -686,7 +705,7 @@ describeIntegration("Recovery drill — real custom archive (BRAWUKA-753)", () =
       expect(rawBytes).toBeGreaterThan(PIPE_BUFFER_BYTES);
       const run = runRestore(
         ["--env", "staging", "--file", archiveGz, "--drill"],
-        { STAGING_DIRECT_URL: adminUrl },
+        { STAGING_DIRECT_URL: adminUrl, RESTORE_DRILL_KEEP_SCRATCH: "1" },
         { stubs: false },
       );
 
@@ -698,10 +717,16 @@ describeIntegration("Recovery drill — real custom archive (BRAWUKA-753)", () =
       expect(run.output).toContain(`Row count: cafes=${seeded.cafes}`);
       expect(run.output).toContain(`Row count: checkins=${seeded.checkins}`);
       expect(run.output).toContain(`Row count: profiles=${seeded.profiles}`);
-      expect(run.output).toContain("Scratch drill database removed.");
+      expect(run.output).toContain("kept for inspection");
 
       const scratchDb = run.output.match(/staging scratch database (\S+)/)?.[1] ?? "";
       expect(scratchDb).toMatch(/^restore_drill_/);
+      // Names, not counts: the restored scratch database must reproduce the
+      // source fixture's independently derived relation set exactly.
+      expect(await publicRelationNames(testDatabaseUrl(adminUrl, scratchDb))).toEqual(
+        expectedRelations,
+      );
+      await cleanupIntegrationDatabase(adminUrl, scratchDb);
       const admin = new pg.Client({ connectionString: adminUrl });
       await admin.connect();
       try {
@@ -754,6 +779,8 @@ describeIntegration("Recovery drill — real custom archive (BRAWUKA-753)", () =
         } finally {
           await client.end();
         }
+        // Names, not counts: equal counts with different names must fail.
+        expect(await publicRelationNames(targetUrl)).toEqual(expectedRelations);
       } finally {
         await cleanupIntegrationDatabase(adminUrl, targetDb);
       }
@@ -881,18 +908,7 @@ describeIntegration("Recovery drill — real custom archive (BRAWUKA-753)", () =
         } finally {
           await client.end();
         }
-        const dump = [
-          "set -euo pipefail",
-          `source "${path.join(REPO_ROOT, "scripts/devops/lib/pg-client.sh")}"`,
-          'pg_client_plan "$1" pg_dump',
-          'pg_run pg_dump "$1" -Fc',
-        ].join("\n");
-        const fd = fs.openSync(baselineArchive, "w");
-        try {
-          execFileSync("bash", ["-c", dump, "--", baselineUrl], { stdio: ["ignore", fd, "inherit"] });
-        } finally {
-          fs.closeSync(fd);
-        }
+        dumpCustomArchive(baselineUrl, baselineArchive);
 
         const run = runRestore(
           ["--env", "staging", "--file", baselineArchive, "--drill"],
@@ -900,11 +916,78 @@ describeIntegration("Recovery drill — real custom archive (BRAWUKA-753)", () =
           { stubs: false },
         );
         expect(run.status).not.toBe(0);
-        expect(run.output).toContain("--drill requires a migrated, seeded archive");
+        expect(run.output).toContain("requires cafes, checkins and profiles");
         expect(run.output).not.toContain("PASSED");
       } finally {
         fs.rmSync(baselineArchive, { force: true });
         await cleanupIntegrationDatabase(adminUrl, baselineDb);
+      }
+    },
+  );
+
+  it.skipIf(!hasPostgresClientTools)(
+    "fails a real drill when every cafe is outside the spatial radius",
+    async () => {
+      const radiusDb = makeTestDbName("restore_radius");
+      const radiusUrl = testDatabaseUrl(adminUrl, radiusDb);
+      await provisionTestDatabase(adminUrl, radiusDb, { useTemplate: true });
+      const radiusArchive = path.join(tmpRoot, "outside-radius.dump");
+      try {
+        const client = new pg.Client({ connectionString: radiusUrl });
+        await client.connect();
+        try {
+          await client.query(
+            "insert into cafes (name, location) values ('Outside', ST_SetSRID(ST_MakePoint(0, 0), 4326)::geography)",
+          );
+        } finally {
+          await client.end();
+        }
+        dumpCustomArchive(radiusUrl, radiusArchive);
+
+        const run = runRestore(
+          ["--env", "staging", "--file", radiusArchive, "--drill"],
+          { STAGING_DIRECT_URL: adminUrl },
+          { stubs: false },
+        );
+        expect(run.status).not.toBe(0);
+        expect(run.output).not.toContain("PASSED");
+        expect(run.output).toContain("the spatial query matched 0 cafe(s)");
+      } finally {
+        fs.rmSync(radiusArchive, { force: true });
+        await cleanupIntegrationDatabase(adminUrl, radiusDb);
+      }
+    },
+  );
+
+  it.skipIf(!hasPostgresClientTools)(
+    "fails a real drill when a required application table is missing",
+    async () => {
+      const partialDb = makeTestDbName("restore_partial");
+      const partialUrl = testDatabaseUrl(adminUrl, partialDb);
+      await provisionTestDatabase(adminUrl, partialDb, { useTemplate: true });
+      const partialArchive = path.join(tmpRoot, "partial.dump");
+      try {
+        const client = new pg.Client({ connectionString: partialUrl });
+        await client.connect();
+        try {
+          await client.query("drop table checkins cascade");
+        } finally {
+          await client.end();
+        }
+        dumpCustomArchive(partialUrl, partialArchive);
+
+        const run = runRestore(
+          ["--env", "staging", "--file", partialArchive, "--drill"],
+          { STAGING_DIRECT_URL: adminUrl },
+          { stubs: false },
+        );
+        expect(run.status).not.toBe(0);
+        expect(run.output).not.toContain("PASSED");
+        expect(run.output).toContain("requires cafes, checkins and profiles");
+        expect(run.output).toContain("missing from the archive: checkins");
+      } finally {
+        fs.rmSync(partialArchive, { force: true });
+        await cleanupIntegrationDatabase(adminUrl, partialDb);
       }
     },
   );
@@ -931,6 +1014,22 @@ describeIntegration("Recovery drill — real custom archive (BRAWUKA-753)", () =
     },
   );
 });
+
+/** Dump a database through the same client-mode decision backup.sh uses. */
+function dumpCustomArchive(url: string, outPath: string): void {
+  const script = [
+    "set -euo pipefail",
+    `source "${path.join(REPO_ROOT, "scripts/devops/lib/pg-client.sh")}"`,
+    'pg_client_plan "$1" pg_dump',
+    'pg_run pg_dump "$1" -Fc',
+  ].join("\n");
+  const fd = fs.openSync(outPath, "w");
+  try {
+    execFileSync("bash", ["-c", script, "--", url], { stdio: ["ignore", fd, "inherit"] });
+  } finally {
+    fs.closeSync(fd);
+  }
+}
 
 /** Application relation names in `public`, excluding extension-owned members. */
 async function publicRelationNames(url: string): Promise<string[]> {

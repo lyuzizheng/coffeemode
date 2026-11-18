@@ -246,6 +246,9 @@ ADMIN_URL=""
 # P2: drop the drill scratch db on ANY exit (failure, signal, success path
 # already drops it explicitly — the second DROP is IF EXISTS, so idempotent).
 cleanup_drill_db() {
+  if [[ "${RESTORE_DRILL_KEEP_SCRATCH:-0}" == "1" ]]; then
+    return 0
+  fi
   if [[ "$DRILL_MODE" == "true" && -n "${DRILL_DB:-}" && -n "${ADMIN_URL:-}" && "$DRY_RUN" == "false" ]]; then
     pg_run psql "$ADMIN_URL" -v ON_ERROR_STOP=0 -q \
       -c "DROP DATABASE IF EXISTS \"${DRILL_DB}\";" >/dev/null 2>&1 || true
@@ -720,6 +723,21 @@ if [ "$DRY_RUN" = false ]; then
     esac
   done < <(printf '%s\n' "$ARCHIVED_TABLES")
 
+  # A drill certificate must cover the documented contract: all three required
+  # application tables present, and a spatial query that actually matches a
+  # cafe. An archive missing a table, or one whose cafes all fall outside the
+  # radius, cannot certify that the application restores (BRAWUKA-1015 review).
+  if [ "$DRILL_MODE" = true ]; then
+    MISSING_REQUIRED=""
+    for required in cafes checkins profiles; do
+      grep -Fxq "$required" "$ARCHIVED_RELATIONS_FILE" || MISSING_REQUIRED+="${MISSING_REQUIRED:+,}${required}"
+    done
+    if [[ -n "$MISSING_REQUIRED" ]]; then
+      error "Drill verification FAILED on ${RESTORE_LABEL}: --drill requires cafes, checkins and profiles; missing from the archive: ${MISSING_REQUIRED}."
+      exit 1
+    fi
+  fi
+
   if grep -Fxq cafes "$ARCHIVED_RELATIONS_FILE"; then
     if [[ "$RESTORED_ROWS" -eq 0 ]]; then
       error "Verification FAILED on ${RESTORE_LABEL}: seeded archive restored cafes/checkins/profiles all empty."
@@ -736,6 +754,10 @@ if [ "$DRY_RUN" = false ]; then
     SPATIAL_CHECK="${SPATIAL_CHECK//[[:space:]]/}"
     if [[ ! "$SPATIAL_CHECK" =~ ^[0-9]+$ ]]; then
       error "PostGIS spatial query check FAILED on ${RESTORE_LABEL}: no numeric result ('${SPATIAL_CHECK}')."
+      exit 1
+    fi
+    if [ "$DRILL_MODE" = true ] && [ "$SPATIAL_CHECK" -eq 0 ]; then
+      error "Drill verification FAILED on ${RESTORE_LABEL}: the spatial query matched 0 cafe(s); a passing drill needs a real spatial hit."
       exit 1
     fi
     ok "PostGIS spatial query test returned ${SPATIAL_CHECK} cafe(s) in range."
@@ -796,10 +818,16 @@ if [ "$DRY_RUN" = false ]; then
 
   # 7. Cleanup drill scratch database on the staging project
   if [ "$DRILL_MODE" = true ]; then
-    log "Cleaning up scratch drill database '${DRILL_DB}'..."
-    pg_run psql "$ADMIN_URL" -v ON_ERROR_STOP=1 -q \
-      -c "DROP DATABASE IF EXISTS \"${DRILL_DB}\";" >/dev/null
-    ok "Scratch drill database removed."
+    # RESTORE_DRILL_KEEP_SCRATCH is a test-only seam: an integration test reads
+    # the restored relation names back from the scratch database, then drops it.
+    if [[ "${RESTORE_DRILL_KEEP_SCRATCH:-0}" == "1" ]]; then
+      warn "RESTORE_DRILL_KEEP_SCRATCH=1: scratch database '${DRILL_DB}' kept for inspection; drop it manually."
+    else
+      log "Cleaning up scratch drill database '${DRILL_DB}'..."
+      pg_run psql "$ADMIN_URL" -v ON_ERROR_STOP=1 -q \
+        -c "DROP DATABASE IF EXISTS \"${DRILL_DB}\";" >/dev/null
+      ok "Scratch drill database removed."
+    fi
   fi
 else
   ok "[DRY-RUN] Post-restore validation queries simulated."

@@ -10,7 +10,7 @@ import { R2_ALLOWED_PUBLIC_HOSTS, assertR2PublicUrlMatches } from "./lib/images/
 import { cafeShellCacheControl } from "./lib/cache-policy";
 // Baseline CSP + Permissions-Policy builder (BRAWUKA-633). Import-free like
 // cache-policy, so the config transpiler resolves it the same way.
-import { securityHeaders } from "./lib/security/headers";
+import { cloudflareBeaconAllowed, securityHeaders } from "./lib/security/headers";
 // DG154 document policy value; same import-free rule as the builders above.
 import { DOCUMENT_X_ROBOTS_TAG } from "./lib/robots";
 
@@ -202,11 +202,13 @@ const nextConfig: NextConfig = {
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
           // CSP is serialized at build time (standalone output), so the
           // analytics exception keys on the deploy discriminator `APP_ENV`
-          // (prod compose build arg), not the runtime env. Staging also builds
-          // with NODE_ENV=production and serves no beacon (BRAWUKA-815).
+          // (a compose build arg in both stacks), not the runtime env.
+          // Staging also builds with NODE_ENV=production, and its zone edge
+          // injects the same beacon, so staging grants the hosts too
+          // (BRAWUKA-981).
           ...securityHeaders(
             process.env.NODE_ENV === "production",
-            process.env.APP_ENV === "production",
+            cloudflareBeaconAllowed(process.env.APP_ENV),
           ),
           ...(process.env.NODE_ENV === "production"
             ? [

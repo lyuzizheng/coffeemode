@@ -6,7 +6,7 @@ Stack 已经授权可用（BRAWUKA-604），但**数据面是空的**。这份�
 
 ## 0. 结论先行
 
-1. **直接切，Better Stack 全退 —— 没有安全网可保。** 现在唯一的 uptime monitor 打的是 `coffeemood.com`：那是 GoDaddy 的停放页（NS `ns11.domaincontrol.com`，A `15.197.225.128`，永远 200），不是 CoffeeMode。真正的生产域名 `cafemood.app` 从 2026-09-18 起就是 502（BRAWUKA-500，prod web 零容器），这个 monitor 一次都没报过。4 条 chart alert 至今只被合成事件喂过。所谓「双写验证期」保护的是一个从未生效的告警面。
+1. **直接切，Better Stack 全退 —— 没有安全网可保。** 现在唯一的 uptime monitor 打的是 `coffeemood.com`：那是 GoDaddy 的停放页（NS `ns11.domaincontrol.com`，A 记录落在 GoDaddy 停放 IP，永远 200），不是 CoffeeMode。真正的生产域名 `cafemood.app` 从 2026-09-18 起就是 502（BRAWUKA-500，prod web 零容器），这个 monitor 一次都没报过。4 条 chart alert 至今只被合成事件喂过。所谓「双写验证期」保护的是一个从未生效的告警面。
 2. **一个组件，不是两个。** traces 和 logs 都从应用侧走 OTel → Grafana Cloud OTLP 网关。不装 Alloy：省一个容器、一次 Docker socket 挂载、一套独立凭据；而且 OTLP 原生带 `trace_id`，日志与 trace 自动关联，不需要在采集器里正则解析 JSON。**已落地（BRAWUKA-606 / BRAWUKA-607）**：`otlp-logs.ts` 直接走 OTLP 进 Loki，和 trace 共用同一个 SDK 与 endpoint。
 3. **Cloudflare 优先。** 页面分析用 Cloudflare Web Analytics（**已经开着**）；uptime 用 Cloudflare 免费能力 + 一个 cron Worker 探针。Cloudflare 的主动 uptime 产品（Health Checks）免费档不支持，需要 Pro（§2.2）。
 4. **不采样。** 量太小，head sampling 只会让 RED 计数失真（§3 P0-2）。
@@ -18,10 +18,10 @@ Stack 已经授权可用（BRAWUKA-604），但**数据面是空的**。这份�
 
 | 项 | 值 |
 |---|---|
-| Stack | `lyuzizheng`，区域 `ap-southeast-1`（新加坡） |
+| Stack | `<stack-slug>`（Owner 账号），区域 `ap-southeast-1`（新加坡） |
 | Grafana 版本 | v13.3.0 |
 | 版本档位 | **Cloud Free** |
-| MCP 身份 | `brabalawuka` / lvzizhengde@gmail.com，Main Org. Admin |
+| MCP 身份 | Owner 账号（单一用户），Main Org. Admin |
 | 数据源 | 12 个，全部就绪 |
 | **应用数据** | **无** |
 | 告警规则 | 0 |
@@ -51,7 +51,7 @@ Stack 已经授权可用（BRAWUKA-604），但**数据面是空的**。这份�
 
 **告警面的真实状态**（2026-09-21 实测）：
 
-- **uptime monitor 是假的。** `coffeemood.com` 解析到 GoDaddy 停放页（`15.197.225.128` / `3.33.251.168`，NS `ns11.domaincontrol.com`），返回 200 `CoffeeMood Cloud Space`。它监控的不是 CoffeeMode。同期 `https://cafemood.app`（含 `/`、`/api/health`、`/cafes`、`www`）**全部 502**，monitor 显示 🟢 Up。
+- **uptime monitor 是假的。** `coffeemood.com` 解析到 GoDaddy 停放页（GoDaddy 停放 IP，NS `ns11.domaincontrol.com`），返回 200 `CoffeeMood Cloud Space`。它监控的不是 CoffeeMode。同期 `https://cafemood.app`（含 `/`、`/api/health`、`/cafes`、`www`）**全部 502**，monitor 显示 🟢 Up。
 - **4 条 chart alert 从未在真实流量上验证过。** 它们挂在 `coffeemode-api-errors-*` 上，而这两个 source 只被合成事件喂过；`docs/agent/pending-user-actions.md` §7 记录两条 ingest 路径的 Dokploy 环境变量仍待 Owner 粘贴。
 
 结论：**当前不存在可用的告警面**，所以「先双写再拆」保护不了任何东西，直接切是正确做法。
@@ -98,7 +98,7 @@ Stack 已经授权可用（BRAWUKA-604），但**数据面是空的**。这份�
 
 ### 2.2 Cloudflare（2026-09-21 实测账号状态）
 
-账号 `Lyuzizheng@gmail.com`，4 个 zone（`brabalawuka.cc`、`cafemood.app`、`cancan.money`、`gen-growth.com`）**全部是 Free Website**。
+账号为 Owner 的 Cloudflare 账号；4 个 zone（`cafemood.app` 加 Owner 名下另外 3 个站点，名称见 BRAWUKA-1016）**全部是 Free Website**。
 
 | 能力 | 免费档 | 现状 | 用途 |
 |---|---|---|---|

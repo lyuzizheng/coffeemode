@@ -6,7 +6,7 @@ service; only `dokploy-mcp` still runs on the Dokploy VPS.
 | Server | Where it runs | Endpoint | Auth |
 |---|---|---|---|
 | `grafana` | Grafana Cloud (hosted) | `https://mcp.grafana.com/mcp` | OAuth 2.1 (dynamic client registration) |
-| `dokploy-mcp` | Dokploy VPS (compose) | `http://192.168.5.103:3005/mcp` | none — LAN only |
+| `dokploy-mcp` | Dokploy VPS (compose) | `http://<lan-host>:3005/mcp` — no public entry; real host in BRAWUKA-1016 | none — LAN only |
 
 `dokploy-mcp` has no auth of its own: any device on the LAN can drive the
 Dokploy API through it. Accepted for now (the VPS LAN is trusted), but it is a

@@ -210,15 +210,18 @@ BRAWUKA-1011 executes this after the code gates:
   gzip-compressed archive larger than the pipe buffer, plus a live restore.
 - `web/tests/devops/db-url-selection.test.ts` — per-environment URL selection
   for `backup.sh`, `restore.sh`, and the migration runner.
-- `web/tests/devops/dokploy-db-host-contract.test.ts` — for both Dokploy env
-  templates and both database variables, requires exactly one assignment, the
-  internal service on `:5432`, a single explicit `sslmode=disable`, and no other
+- `web/tests/devops/dokploy-db-host-contract.test.ts` (gate in
+  `tests/devops/lib/dokploy-db-env.ts`) — for both Dokploy env templates and
+  both database variables, requires exactly one definition in any Compose
+  env-file spelling (`KEY=value`, `KEY: value`, `export KEY=value`), a nonempty
+  authority host, an explicit `:5432`, a single `sslmode=disable`, and no other
   query parameter; then rejects a hosted database host after percent-decoding,
-  lowercasing and removing a trailing dot — that is, the host and port `pg`
-  resolves. Regressions covered: `?host=`/`?port=` overrides (including a
-  percent-encoded parameter name), a repeated `sslmode`, an encoded or
-  trailing-dot hosted hostname, and a second assignment that Docker Compose
-  would let win. The Auth URL is excluded.
+  lowercasing and removing a trailing dot — the host `pg` resolves. Regressions
+  covered: `?host=`/`?port=` overrides (including a percent-encoded parameter
+  name), a repeated `sslmode`, an encoded or trailing-dot hosted hostname, a
+  duplicate assignment in either Compose spelling, an empty authority host, and
+  an omitted port (where `pg` would fall back to `PGHOST`/`PGPORT`). The Auth URL
+  is excluded.
 - `web/tests/devops/postgres-connection.test.ts` — `sslmode` alone decides the
   TLS shape: no hostname carries a default, and an unrecognized value still
   fails closed.

@@ -65,47 +65,79 @@ function useResolveTurnstile(
   return { turnstileReady, widgetIdRef };
 }
 
+type ResolveOutcome = { ok: true; poi: POI } | { ok: false; error: string };
+
+interface ResolveWidgetState {
+  sitekey: string | null;
+  widgetId: string | null;
+  ready: boolean;
+}
+
+/**
+ * Challenge plus resolve POST for one submit. Never throws: every failure
+ * becomes an `error` the caller shows, so one dead end cannot skip the
+ * widget reset that follows.
+ */
+async function resolveMapsLink(
+  mapsUrl: string,
+  widget: ResolveWidgetState,
+  t: CreateTranslator,
+): Promise<ResolveOutcome> {
+  let turnstileToken: string | null = null;
+  if (widget.sitekey) {
+    if (!widget.ready || !widget.widgetId) return { ok: false, error: t("resolveFailed") };
+    try {
+      turnstileToken = await executeWidgetForToken(widget.widgetId);
+    } catch {
+      return { ok: false, error: t("resolveFailed") };
+    }
+  }
+  try {
+    const poi = await apiFetch<POI>("/api/places/resolve", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        maps_share_url: mapsUrl,
+        ...(turnstileToken ? { "cf-turnstile-response": turnstileToken } : {}),
+      }),
+    });
+    return { ok: true, poi };
+  } catch (cause) {
+    return { ok: false, error: apiErrorMessage(cause, t("resolveFailed")) };
+  }
+}
+
 export function MapsLinkResolveForm({ active, onSelectPOI, onError }: MapsLinkResolveFormProps) {
   const t = useTranslations("create");
   const [mapsUrl, setMapsUrl] = useState("");
   const [busy, setBusy] = useState(false);
+  const submittingRef = useRef(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const { turnstileReady, widgetIdRef } = useResolveTurnstile(active, containerRef, onError, t);
 
   const handleResolveLink = async (event: FormEvent) => {
     event.preventDefault();
-    if (!mapsUrl.trim()) return;
-    const sitekey = getTurnstileSiteKey();
-    const widgetId = widgetIdRef.current;
-    let turnstileToken: string | null = null;
-    if (sitekey) {
-      if (!turnstileReady || !widgetId) {
-        onError(t("resolveFailed"));
-        return;
-      }
-      try {
-        turnstileToken = await executeWidgetForToken(widgetId);
-      } catch {
-        onError(t("resolveFailed"));
-        return;
-      }
-    }
+    // The lock must come before the challenge, not after it (BRAWUKA-1021 P1):
+    // `busy` only disables the button on the next render, so a rapid repeat
+    // submit would run a second `execute()` on one widget and strand the first
+    // token promise. The ref closes that same-tick window.
+    if (!mapsUrl.trim() || submittingRef.current) return;
+    submittingRef.current = true;
     setBusy(true);
     onError(null);
+    const sitekey = getTurnstileSiteKey();
+    const widgetId = widgetIdRef.current;
     try {
-      const resolvedPoi = await apiFetch<POI>("/api/places/resolve", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          maps_share_url: mapsUrl.trim(),
-          ...(turnstileToken ? { "cf-turnstile-response": turnstileToken } : {}),
-        }),
-      });
-      onSelectPOI(resolvedPoi);
-    } catch (cause) {
-      onError(apiErrorMessage(cause, t("resolveFailed")));
+      const outcome = await resolveMapsLink(
+        mapsUrl.trim(),
+        { sitekey, widgetId, ready: turnstileReady },
+        t,
+      );
+      if (outcome.ok) onSelectPOI(outcome.poi);
+      else onError(outcome.error);
     } finally {
-      setBusy(false);
+      // Reset before releasing the lock: a submit that starts while the widget
+      // is being reset would have its challenge cleared and time out.
       if (sitekey && widgetId) {
         try {
           await resetResolveWidget(widgetId);
@@ -113,6 +145,8 @@ export function MapsLinkResolveForm({ active, onSelectPOI, onError }: MapsLinkRe
           // Benign: reset failure only affects the next retry token freshness.
         }
       }
+      submittingRef.current = false;
+      setBusy(false);
     }
   };
 
@@ -133,8 +167,10 @@ export function MapsLinkResolveForm({ active, onSelectPOI, onError }: MapsLinkRe
           {busy ? <Spinner size="sm" /> : t("resolveLink")}
         </Button>
       </div>
-      {/* Invisible Turnstile challenge host for POST /api/places/resolve. */}
-      <div ref={containerRef} aria-hidden="true" />
+      {/* Turnstile challenge host for POST /api/places/resolve. Hidden unless
+          Turnstile requires an interaction, so it must stay reachable by
+          assistive tech when it does appear. */}
+      <div ref={containerRef} />
     </form>
   );
 }

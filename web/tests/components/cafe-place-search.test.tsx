@@ -237,6 +237,29 @@ describe("maps-link workflow (Turnstile lifecycle)", () => {
     resolveRender("w-late");
   });
 
+  it("a rapid repeat submit runs one challenge and sends one POST", async () => {
+    mockedSiteKey.mockReturnValue("site-key");
+    renderSheet();
+    await waitFor(() => expect(mockedRenderWidget).toHaveBeenCalled());
+
+    const token = Promise.withResolvers<string>();
+    mockedExecuteWidget.mockImplementationOnce(() => token.promise);
+
+    fireEvent.change(screen.getByPlaceholderText(en.create.mapsLinkPlaceholder), {
+      target: { value: "https://maps.google.com/?cid=42" },
+    });
+    const form = linkForm();
+    fireEvent.submit(form);
+    fireEvent.submit(form);
+
+    expect(mockedExecuteWidget).toHaveBeenCalledTimes(1);
+    expect(mockedApiFetch).not.toHaveBeenCalled();
+
+    token.resolve("tok");
+    await waitFor(() => expect(mockedApiFetch).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(mockedResetWidget).toHaveBeenCalledTimes(1));
+  });
+
   it("without a sitekey no widget renders and the resolve posts no token", async () => {
     mockedApiFetch.mockResolvedValue(POI_FIXTURE);
     renderSheet();

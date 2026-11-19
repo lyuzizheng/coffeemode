@@ -130,6 +130,12 @@ export async function renderInvisibleResolveWidget(container: HTMLElement, sitek
  */
 export async function executeWidgetForToken(widgetId: string, timeoutMs = 15_000): Promise<string> {
   const turnstile = await loadTurnstileScript();
+  // One pending challenge per widget: a second execute would overwrite the
+  // first deferred, so that submit would never receive its token and its
+  // finally-block would delete the second one's entry (BRAWUKA-1021 P1).
+  if (pendingByWidget.has(widgetId)) {
+    throw new Error("Turnstile challenge already in progress");
+  }
   const { promise, resolve, reject } = Promise.withResolvers<string>();
   pendingByWidget.set(widgetId, { resolve, reject });
   const timeout = setTimeout(() => {

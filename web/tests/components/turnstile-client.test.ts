@@ -78,4 +78,18 @@ describe("turnstile-client widget render options", () => {
 
     await expect(tokenPromise).resolves.toBe("tok-123");
   });
+
+  it("rejects a second execute for the same widget while one challenge is pending", async () => {
+    const { render, execute } = installTurnstile();
+    const widgetId = await renderInvisibleResolveWidget(document.createElement("div"), "site-key");
+
+    const first = executeWidgetForToken(widgetId, 1_000);
+    await vi.waitFor(() => expect(execute).toHaveBeenCalledTimes(1));
+
+    await expect(executeWidgetForToken(widgetId, 1_000)).rejects.toThrow(/already in progress/);
+    render.mock.calls[0][1].callback("tok-123");
+
+    await expect(first).resolves.toBe("tok-123");
+    expect(execute).toHaveBeenCalledTimes(1);
+  });
 });

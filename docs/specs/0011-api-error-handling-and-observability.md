@@ -239,10 +239,14 @@ does not replace:
   closes the P1 i18n leak.
 - Retry: queries retry only on network error or 5xx (max 2, keep the
   `navigator.onLine` gate); 4xx never retries; 429 honors `Retry-After` once
-  instead of immediate retries. Mutations stay `retry: 0` except for a single
-  429 replay (`shouldRetryMutation`, BRAWUKA-1020): a 429 is the only failure
-  the server is guaranteed not to have applied, so a toggle can safely resend
-  it; every other mutation failure is never replayed.
+  instead of immediate retries. Mutations stay `retry: 0`, with one narrow
+  exception (BRAWUKA-1020): `POST /api/checkins/[id]/like` — the only toggle
+  whose 429 the client can replay — retries once after the **full** server
+  `Retry-After`, because `guard()` rejects before the handler and a
+  pre-origin edge 429 never arrives, so no state can have changed. The
+  predicate and delay live beside that mutation in `use-checkin-feed.ts`, not
+  as a shared exported policy (spec 0009 §6); every other mutation failure is
+  never replayed.
 - All ~30 raw `fetch('/api/...')` call sites migrate to `apiFetch`; the 401
   gaps (profile, settings, owner controls) adopt the SignInGate convention;
   account deletion clears query cache + IndexedDB persistors like
@@ -321,10 +325,14 @@ complete; growth happens only with new routes.
 - **Upstream 4xx from workers** (`poi_service`, `image_service_error`
   passthrough): the web client sanitizes to 502/404/413/422 before the route
   sees it — a worker 4xx never leaks as our 4xx to the browser.
-- **429 during a mutation**: replayed exactly once after `Retry-After`
-  (`shouldRetryMutation`, BRAWUKA-1020) — the app's `guard()` rejects before
-  the handler and a pre-origin edge 429 never reaches it, so no state can have
-  changed and a toggle cannot double-apply. Every other mutation failure stays
+- **429 during a mutation**: only the check-in like toggle replays it, once,
+  after the full `Retry-After` (BRAWUKA-1020) — the app's `guard()` rejects
+  before the handler and a pre-origin edge 429 never reaches it, so no state
+  can have changed and a toggle cannot double-apply. `apiFetch` parses the
+  header uncapped; the mutation's own delay (`likeReplayDelay`) waits it out
+  in full, so the query policy's 30 s `RETRY_AFTER_CAP_MS` cannot clip a 60 s
+  `cafes-write` window and burn the single attempt. The card stays disabled
+  through the wait and the replay. Every other mutation failure stays
   `retry: 0`: the write may have committed, so the user retries manually.
   If the replay also 429s, the UI rolls back and shows the localized fallback.
 - **Legacy top-level extras** (`cafe_id`, `existing_checkin_id`, `n`): emitted
@@ -365,8 +373,9 @@ complete; growth happens only with new routes.
 - Workers: `x-request-id` echoed, JSON error lines, no `key=` substring in any
   logged string (unit test with a fake upstream throw), `image-service`
   wrangler `[observability]` enabled.
-- `apiFetch`: 401 → `UNAUTHORIZED` marker; 429 → waits `Retry-After` once
-  (query or mutation, BRAWUKA-1020);
+- `apiFetch`: 401 → `UNAUTHORIZED` marker; 429 → `retryAfterMs` carries the
+  full parsed header (query retry bounds its wait at `RETRY_AFTER_CAP_MS`;
+  the like replay waits it out in full, BRAWUKA-1020);
   zh-locale render of a validation failure contains no English server prose.
 - Query retry: 404/401/403 are not retried (unit test on `shouldRetryQuery`
   with an `ApiError`-typed failure input).

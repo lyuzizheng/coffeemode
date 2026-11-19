@@ -6,12 +6,15 @@
  * the app emitted no `rate_limited` line — the 429 came from the edge, before
  * the route. A 429 is the one failure class that cannot have applied state
  * (the app's guard rejects before the handler; a pre-origin 429 never
- * arrives), so the like mutation replays it once after `Retry-After` instead
- * of dropping the user's action (spec 0011, `shouldRetryMutation`).
+ * arrives), so the like mutation replays it once after the **full**
+ * `Retry-After` instead of dropping the user's action (spec 0011; the
+ * predicate and delay live beside the mutation in `use-checkin-feed.ts`).
  *
  * These tests pin the observable behavior of that policy on the real hook:
  *   - like → unlike consecutively: counts go 1 → 0, no toast.
- *   - one transient 429 on the unlike: replayed once, settles at 0, no toast.
+ *   - one transient 429 on the unlike: no replay inside the wait, a replay
+ *     only after the full header delay (45 s honoured, past the 30 s query
+ *     cap), the card stays disabled while it waits, then settles at 0.
  *   - a persistent 429: exactly two attempts, optimistic state rolls back to
  *     liked/1, and the localized failure toast fires.
  */
@@ -58,7 +61,15 @@ type LikeResponse = { liked: boolean; likes_count: number };
 
 let serverLiked = false;
 let serverCount = 0;
-let likeResponses: Array<LikeResponse | Error> = [];
+let likeResponses: Array<LikeResponse | Error | Promise<LikeResponse>> = [];
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((res) => {
+    resolve = res;
+  });
+  return { promise, resolve };
+}
 
 function publicCheckIn(liked: boolean, count: number): PublicCheckIn {
   return {
@@ -136,16 +147,17 @@ beforeEach(() => {
       const next = likeResponses.shift();
       if (next === undefined) throw new Error(`unexpected like POST: ${url}`);
       if (next instanceof Error) throw next;
-      serverLiked = next.liked;
-      serverCount = next.likes_count;
-      return next;
+      const value = await next;
+      serverLiked = value.liked;
+      serverCount = value.likes_count;
+      return value;
     }
     throw new Error(`unexpected apiFetch: ${url}`);
   });
 });
 
-const rateLimited = () =>
-  new ApiError({ status: 429, code: "rate_limited", retryAfterMs: 150 });
+const rateLimited = (retryAfterMs = 150) =>
+  new ApiError({ status: 429, code: "rate_limited", retryAfterMs });
 
 describe("useCheckinFeed like/unlike under rate limiting", () => {
   it("toggles 0→1→0 on two consecutive like calls", async () => {
@@ -186,32 +198,61 @@ describe("useCheckinFeed like/unlike under rate limiting", () => {
     expect(toastMock).not.toHaveBeenCalled();
   });
 
-  it("replays a transient 429 once, so the unlike still lands", async () => {
-    const queryClient = makeQueryClient();
-    seedFeed(queryClient, true, 1);
+  it("waits out the full Retry-After and stays disabled through the replay", async () => {
+    vi.useFakeTimers();
+    try {
+      const queryClient = makeQueryClient();
+      seedFeed(queryClient, true, 1);
+      const replay = deferred<LikeResponse>();
+      likeResponses = [rateLimited(45_000), replay.promise];
 
-    const { result } = renderHook(() => useCheckinFeed(CAFE_ID, "newest"), {
-      wrapper: wrapper(queryClient),
-    });
+      const { result } = renderHook(() => useCheckinFeed(CAFE_ID, "newest"), {
+        wrapper: wrapper(queryClient),
+      });
 
-    likeResponses = [rateLimited(), { liked: false, likes_count: 0 }];
-    await act(async () => {
-      result.current.like(publicCheckIn(true, 1));
-    });
+      await act(async () => {
+        result.current.like(publicCheckIn(true, 1));
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(likePostCount()).toBe(1);
+      expect(result.current.likePendingIds.has(CHECKIN_ID)).toBe(true);
 
-    // The card stays pending (button disabled) while the replay waits out
-    // `Retry-After`, so the user cannot double-click into a second toggle.
-    await waitFor(() => expect(result.current.likePendingIds.has(CHECKIN_ID)).toBe(true));
+      // The query policy's 30 s cap must not clip a 45 s server instruction:
+      // replaying at 30 s re-enters the same exhausted `cafes-write` window
+      // and burns the single attempt.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(30_000);
+      });
+      expect(likePostCount()).toBe(1);
+      expect(result.current.likePendingIds.has(CHECKIN_ID)).toBe(true);
 
-    // The replay is the settle signal: it lands only after `retryDelay`, so
-    // waiting for the second POST cannot race the retry window.
-    await waitFor(() => expect(likePostCount()).toBe(2));
-    await waitFor(() => expect(result.current.likePendingIds.size).toBe(0));
-    expect(cachedCheckin(queryClient)).toMatchObject({
-      liked_by_viewer: false,
-      likes_count: 0,
-    });
-    expect(toastMock).not.toHaveBeenCalled();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(15_000);
+      });
+      expect(likePostCount()).toBe(2);
+      // The replay is in flight and held: the button must stay disabled so a
+      // second click cannot queue another toggle.
+      expect(result.current.likePendingIds.has(CHECKIN_ID)).toBe(true);
+
+      await act(async () => {
+        replay.resolve({ liked: false, likes_count: 0 });
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+
+      expect(result.current.likePendingIds.size).toBe(0);
+      expect(cachedCheckin(queryClient)).toMatchObject({
+        liked_by_viewer: false,
+        likes_count: 0,
+      });
+      expect(toastMock).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("rolls back and toasts when the 429 persists", async () => {

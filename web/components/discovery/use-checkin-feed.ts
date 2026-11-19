@@ -19,7 +19,7 @@ import {
 } from "@tanstack/react-query";
 import { toast } from "@heroui/react";
 import { apiErrorMessage, apiFetch, ApiError, isUnauthorized } from "@/lib/http";
-import { queryRetryDelay, shouldRetryMutation, shouldRetryQuery } from "@/lib/query/retry";
+import { shouldRetryQuery } from "@/lib/query/retry";
 import { dedupeCheckins } from "@/lib/discovery/view-model";
 import type { CheckInFeedMode, CheckInFeedPage, PublicCheckIn } from "@/types/checkins";
 
@@ -178,6 +178,31 @@ function shiftOptimisticLike(
   );
 }
 
+/**
+ * BRAWUKA-1020 — the one mutation that replays a 429, kept local to its only
+ * call site (spec 0009 §6: no single-use exported policy). A `429` is the
+ * only failure the server is guaranteed not to have applied — `guard()`
+ * rejects before the handler, and a pre-origin edge 429 never reaches the app
+ * — so the toggle cannot double-apply. Every other failure stays `retry: 0`:
+ * the write may have committed, and a replay would flip the toggle twice.
+ */
+function shouldReplayLike(failureCount: number, error: unknown): boolean {
+  return failureCount === 0 && error instanceof ApiError && error.status === 429;
+}
+
+/**
+ * Wait out the server's **full** `Retry-After` for that replay. Unlike
+ * `queryRetryDelay` (which bounds a buggy upstream at `RETRY_AFTER_CAP_MS`),
+ * a toggle must reach the end of the window the server named — the
+ * `cafes-write` bucket is 60 s, so a 30 s cap would replay into the same
+ * exhausted window and burn the single attempt. Missing header → 1 s.
+ */
+function likeReplayDelay(_failureCount: number, error: unknown): number {
+  return error instanceof ApiError && error.retryAfterMs !== undefined
+    ? error.retryAfterMs
+    : 1000;
+}
+
 function useLikeMutation(queryClient: QueryClient, cafeId: string, signInCopy: string, failedCopy: string) {
   const tApi = useTranslations();
   // In-flight like count. `onSettled` runs before the mutation's status
@@ -186,14 +211,8 @@ function useLikeMutation(queryClient: QueryClient, cafeId: string, signInCopy: s
   const inFlight = useRef(0);
   return useMutation({
     mutationKey: ["like-checkin", cafeId],
-    // BRAWUKA-1020: a 429 was never applied — the app guard rejects before
-    // the handler and a pre-origin (edge) 429 never arrives — so replay the
-    // toggle once, waiting out `Retry-After`. Without this, one transient
-    // rate limit swallows the user's click and the card snaps back to its
-    // pre-click state. Every other failure stays `retry: 0` (the write may
-    // have committed; a replay would double-toggle).
-    retry: shouldRetryMutation,
-    retryDelay: queryRetryDelay,
+    retry: shouldReplayLike,
+    retryDelay: likeReplayDelay,
     mutationFn: async (checkin: PublicCheckIn) => {
       return apiFetch<{ liked: boolean; likes_count: number }>(
         `/api/checkins/${checkin.id}/like`,

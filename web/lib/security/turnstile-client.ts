@@ -1,11 +1,16 @@
 /**
  * Cloudflare Turnstile widget loader (BRAWUKA-239).
  *
- * Single script-tag loader + invisible-widget token flow for the
+ * Single script-tag loader + execute-mode token flow for the
  * `places-resolve` surface in `MapsLinkResolveForm`. Tokens are single-use:
  * every submit executes a fresh challenge and the widget resets after each
  * attempt so a retry mints a new one. Client-safe by construction: no
  * `node:` imports, no `server-only` guard.
+ *
+ * Widget visibility is `appearance: "interaction-only"` — the documented
+ * substitute for the removed `size: "invisible"` value (BRAWUKA-1021).
+ * Turnstile rejects any size outside `normal` / `flexible` / `compact`;
+ * "invisible" is a dashboard widget *mode*, not a render parameter.
  */
 
 export const TURNSTILE_SCRIPT = "https://challenges.cloudflare.com/turnstile/v0/api.js";
@@ -16,12 +21,17 @@ export const TURNSTILE_ACTION_PLACES_RESOLVE = "places-resolve";
 interface TurnstileRenderOptions {
   sitekey: string;
   action?: string;
-  // `execution: "execute"` keeps the invisible widget dormant at render so the
-  // challenge only runs when `executeWidgetForToken` calls `execute()` per
-  // submit. The default `"render"` would burn one challenge per mount whose
-  // token is discarded (`pendingByWidget` is empty until submit).
+  // `execution: "execute"` keeps the widget dormant at render so the challenge
+  // only runs when `executeWidgetForToken` calls `execute()` per submit. The
+  // default `"render"` would burn one challenge per mount whose token is
+  // discarded (`pendingByWidget` is empty until submit).
   execution?: "render" | "execute";
-  size?: "normal" | "compact" | "flexible" | "invisible";
+  // Legal sizes only: Turnstile rejects "invisible" here (BRAWUKA-1021).
+  size?: "normal" | "compact" | "flexible";
+  // Visibility control: `interaction-only` keeps the widget hidden until a
+  // visitor interaction is required, so the form has no visible footprint on
+  // the common path while a suspected bot still gets the challenge.
+  appearance?: "always" | "execute" | "interaction-only";
   theme?: "light" | "dark" | "auto";
   callback?: (token: string) => void;
   "expired-callback"?: () => void;
@@ -86,8 +96,9 @@ export function loadTurnstileScript(): Promise<TurnstileApi> {
 const pendingByWidget = new Map<string, { resolve: (token: string) => void; reject: (cause: Error) => void }>();
 
 /**
- * Render the invisible `places-resolve` widget into `container`. The widget
- * stays dormant until `executeWidgetForToken` runs the challenge per submit.
+ * Render the `places-resolve` widget into `container`. The widget stays
+ * dormant until `executeWidgetForToken` runs the challenge per submit, and
+ * stays visually hidden unless the visitor must interact with the challenge.
  */
 export async function renderInvisibleResolveWidget(container: HTMLElement, sitekey: string): Promise<string> {
   const turnstile = await loadTurnstileScript();
@@ -95,7 +106,8 @@ export async function renderInvisibleResolveWidget(container: HTMLElement, sitek
   widgetId = turnstile.render(container, {
     sitekey,
     action: TURNSTILE_ACTION_PLACES_RESOLVE,
-    size: "invisible",
+    size: "flexible",
+    appearance: "interaction-only",
     execution: "execute",
     theme: "auto",
     callback: (token: string) => {

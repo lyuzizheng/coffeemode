@@ -133,8 +133,10 @@ export function MapsLinkResolveForm({ active, onSelectPOI, onError }: MapsLinkRe
           {busy ? <Spinner size="sm" /> : t("resolveLink")}
         </Button>
       </div>
-      {/* Invisible Turnstile challenge host for POST /api/places/resolve. */}
-      <div ref={containerRef} aria-hidden="true" />
+      {/* Turnstile challenge host for POST /api/places/resolve. Hidden unless
+          Turnstile requires an interaction, so it must stay reachable by
+          assistive tech when it does appear. */}
+      <div ref={containerRef} />
     </form>
   );
 }

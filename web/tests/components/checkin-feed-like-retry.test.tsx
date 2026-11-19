@@ -15,6 +15,8 @@
  *   - one transient 429 on the unlike: no replay inside the wait, a replay
  *     only after the full header delay (45 s honoured, past the 30 s query
  *     cap), the card stays disabled while it waits, then settles at 0.
+ *   - a `Retry-After` past the 32-bit timer ceiling: no replay at all — the
+ *     native timer would fire it in ~0 ms, so the toggle fails fast instead.
  *   - a persistent 429: exactly two attempts, optimistic state rolls back to
  *     liked/1, and the localized failure toast fires.
  */
@@ -253,6 +255,33 @@ describe("useCheckinFeed like/unlike under rate limiting", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("does not replay a Retry-After the native timer cannot represent", async () => {
+    const queryClient = makeQueryClient();
+    seedFeed(queryClient, true, 1);
+    // 2,147,484 s — the DOM probe's overflow case: > 2^31−1 ms, which
+    // `setTimeout` truncates to ~0 and would replay within milliseconds.
+    // Only one response is queued, so any replay also fails the mock.
+    likeResponses = [rateLimited(2_147_484_000)];
+
+    const { result } = renderHook(() => useCheckinFeed(CAFE_ID, "newest"), {
+      wrapper: wrapper(queryClient),
+    });
+
+    await act(async () => {
+      result.current.like(publicCheckIn(true, 1));
+    });
+
+    await waitFor(() => {
+      expect(toastMock).toHaveBeenCalledWith("trans_like_failed", { timeout: 4000 });
+    });
+    expect(likePostCount()).toBe(1);
+    expect(result.current.likePendingIds.size).toBe(0);
+    expect(cachedCheckin(queryClient)).toMatchObject({
+      liked_by_viewer: true,
+      likes_count: 1,
+    });
   });
 
   it("rolls back and toasts when the 429 persists", async () => {

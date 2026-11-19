@@ -179,23 +179,41 @@ function shiftOptimisticLike(
 }
 
 /**
+ * Largest delay `setTimeout` represents: the HTML timer clamps its delay to a
+ * signed 32-bit integer, so a bigger value fires almost immediately instead
+ * of waiting. A `Retry-After` at or above this is not a wait the browser can
+ * perform (≈24.8 days is not a useful toggle backoff anyway).
+ */
+const MAX_TIMER_DELAY_MS = 2 ** 31 - 1;
+
+/**
  * BRAWUKA-1020 — the one mutation that replays a 429, kept local to its only
  * call site (spec 0009 §6: no single-use exported policy). A `429` is the
  * only failure the server is guaranteed not to have applied — `guard()`
  * rejects before the handler, and a pre-origin edge 429 never reaches the app
  * — so the toggle cannot double-apply. Every other failure stays `retry: 0`:
  * the write may have committed, and a replay would flip the toggle twice.
+ *
+ * A delay the native timer cannot represent is not replayed at all: passing
+ * it to `setTimeout` would fire the retry in ~0 ms, i.e. an immediate second
+ * POST against the same exhausted limit. Failing fast (rollback + toast) is
+ * strictly better than a guaranteed-to-fail early replay.
  */
 function shouldReplayLike(failureCount: number, error: unknown): boolean {
-  return failureCount === 0 && error instanceof ApiError && error.status === 429;
+  if (failureCount !== 0 || !(error instanceof ApiError) || error.status !== 429) {
+    return false;
+  }
+  const delay = error.retryAfterMs ?? 0;
+  return delay >= 0 && delay < MAX_TIMER_DELAY_MS;
 }
 
 /**
- * Wait out the server's **full** `Retry-After` for that replay. Unlike
- * `queryRetryDelay` (which bounds a buggy upstream at `RETRY_AFTER_CAP_MS`),
- * a toggle must reach the end of the window the server named — the
- * `cafes-write` bucket is 60 s, so a 30 s cap would replay into the same
- * exhausted window and burn the single attempt. Missing header → 1 s.
+ * Wait out the server's **full** `Retry-After` for that replay, up to the
+ * timer ceiling enforced by `shouldReplayLike`. Unlike `queryRetryDelay`
+ * (which bounds a buggy upstream at `RETRY_AFTER_CAP_MS`), a toggle must
+ * reach the end of the window the server named — the `cafes-write` bucket is
+ * 60 s, so a 30 s cap would replay into the same exhausted window and burn
+ * the single attempt. Missing header → 1 s.
  */
 function likeReplayDelay(_failureCount: number, error: unknown): number {
   return error instanceof ApiError && error.retryAfterMs !== undefined

@@ -11,7 +11,7 @@ import { ApiError } from "@/lib/http";
  *   the server's `Retry-After` (see `queryRetryDelay`).
  * - `ApiError` 5xx and network failures (fetch `TypeError`, anything that is
  *   not an `ApiError`) → at most two retries.
- * - Mutations never reach this: `client.ts` pins `retry: 0`.
+ * - Mutations use `shouldRetryMutation` below, never this.
  */
 export function shouldRetryQuery(
   failureCount: number,
@@ -24,6 +24,23 @@ export function shouldRetryQuery(
     if (error.status >= 400 && error.status < 500) return false;
   }
   return failureCount < 2;
+}
+
+/**
+ * Mutation retry policy — BRAWUKA-1020, the narrow exception to spec 0011's
+ * "mutations never retry".
+ *
+ * A mutation normally must not replay: a 5xx or a dropped connection may
+ * have committed, and re-sending a toggle would flip it twice. `429` is the
+ * one failure class that cannot have applied state — the app's `guard()`
+ * rejects before the handler runs, and a pre-origin edge 429 never reaches
+ * the app — so replaying it once is safe for every mutation and absorbs a
+ * transient rate limit without making the user click again. Everything else
+ * stays `retry: 0`. Callers opt in per mutation; the global mutation
+ * defaults in `client.ts` are untouched.
+ */
+export function shouldRetryMutation(failureCount: number, error: unknown): boolean {
+  return failureCount === 0 && error instanceof ApiError && error.status === 429;
 }
 
 /**

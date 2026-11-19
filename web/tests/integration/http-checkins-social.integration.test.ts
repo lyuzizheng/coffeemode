@@ -951,12 +951,16 @@ describeHttp("Paths 4+5: check-ins, revisit, idempotency & social likes HTTP sui
     expect(cCheckin.status).toBe(201);
     const c_checkin1_id = cCheckin.data.checkin_id;
 
-    // A likes B's check-in → 1; again → symmetric unlike → 0.
+    // A likes B's check-in → 1; again → symmetric unlike → 0. Consecutive
+    // calls on the same `cafes-write` budget with no limiter reset: one
+    // token each, so the second must not be throttled (BRAWUKA-1020 — a
+    // staging 429 on this pair came from the edge, not this bucket).
     const liked = await likeCheckin(clientA, b_checkin1_id);
     expect(liked.status).toBe(200);
     expect(liked.data).toMatchObject({ liked: true, likes_count: 1 });
 
     const unliked = await likeCheckin(clientA, b_checkin1_id);
+    expect(unliked.status).toBe(200);
     expect(unliked.data).toMatchObject({ liked: false, likes_count: 0 });
 
     // A re-likes and C likes → 2, and helpful mode puts B's check-in first.

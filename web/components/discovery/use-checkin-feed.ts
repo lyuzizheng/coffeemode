@@ -19,7 +19,7 @@ import {
 } from "@tanstack/react-query";
 import { toast } from "@heroui/react";
 import { apiErrorMessage, apiFetch, ApiError, isUnauthorized } from "@/lib/http";
-import { shouldRetryQuery } from "@/lib/query/retry";
+import { queryRetryDelay, shouldRetryMutation, shouldRetryQuery } from "@/lib/query/retry";
 import { dedupeCheckins } from "@/lib/discovery/view-model";
 import type { CheckInFeedMode, CheckInFeedPage, PublicCheckIn } from "@/types/checkins";
 
@@ -186,6 +186,14 @@ function useLikeMutation(queryClient: QueryClient, cafeId: string, signInCopy: s
   const inFlight = useRef(0);
   return useMutation({
     mutationKey: ["like-checkin", cafeId],
+    // BRAWUKA-1020: a 429 was never applied — the app guard rejects before
+    // the handler and a pre-origin (edge) 429 never arrives — so replay the
+    // toggle once, waiting out `Retry-After`. Without this, one transient
+    // rate limit swallows the user's click and the card snaps back to its
+    // pre-click state. Every other failure stays `retry: 0` (the write may
+    // have committed; a replay would double-toggle).
+    retry: shouldRetryMutation,
+    retryDelay: queryRetryDelay,
     mutationFn: async (checkin: PublicCheckIn) => {
       return apiFetch<{ liked: boolean; likes_count: number }>(
         `/api/checkins/${checkin.id}/like`,

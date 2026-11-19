@@ -34,6 +34,7 @@ export const ERROR_CODES = {
   provider_start_failed: { status: 500, domain: "auth", summary: "OAuth start failed" },
   signout_failed: { status: 500, domain: "auth", summary: "sign-out failed" },
   not_configured: { status: 503, domain: "auth", summary: "auth backend not configured" },
+  beta_not_allowed: { status: 403, domain: "auth", summary: "signed in, address not on the closed-beta allowlist" },
   // request
   invalid_request: { status: 400, domain: "request", summary: "malformed input (catch-all structural)" },
   invalid_body: { status: 400, domain: "request", summary: "body not a JSON object" },

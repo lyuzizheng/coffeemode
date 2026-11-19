@@ -669,5 +669,19 @@
       "version_title": "Version",
       "version_body": "CafeMood {version} — a work in progress, improved continuously."
     }
+  },
+  "beta": {
+    "kicker": "Closed beta",
+    "title": "CafeMood is in closed beta",
+    "body": "A small circle of coffee people first. Sign in with Google to see whether you're on the list.",
+    "deniedKicker": "Not on the list",
+    "deniedTitle": "This account isn't invited yet",
+    "deniedBody": "The beta is invitation-only. Ask for an invitation, or sign in with another Google account.",
+    "signedInAs": "Signed in as {email}",
+    "request": "Request an invitation",
+    "requestSubject": "CafeMood closed beta — invitation request",
+    "footerPrivacy": "Privacy",
+    "footerTerms": "Terms",
+    "footerAbout": "About"
   }
 }

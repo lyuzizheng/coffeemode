@@ -74,3 +74,10 @@ beforeEach(async () => {
 // Unmount React trees between tests so rendered components from one file do not
 // leak into the next.
 afterEach(cleanup);
+
+// Closed-beta gate (BRAWUKA-970): the app ships gated (`app.yaml
+// beta.enabled: true`), and these suites exercise product behavior, not the
+// gate. BETA_MODE=0 opens it exactly as an operator would for a staging run;
+// the beta suites set `1` themselves (the flag is read at call time, not at
+// import). An explicit value from the environment always wins.
+process.env.BETA_MODE ??= "0";

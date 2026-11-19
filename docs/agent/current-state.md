@@ -8,6 +8,11 @@ The design-grill program is COMPLETE (2026-08-23): all seven map-independent UI 
 
 ## Active focus
 
+- Closed beta gate ships (BRAWUKA-970, owner decision 2026-10-26): the app is invite-only by
+  default (`beta.enabled: true`), `/` renders the beta surface for anyone not on
+  `beta_allowlist`, and every API route answers 401/403 before the handler. Invites are
+  operated with `web/scripts/beta-allowlist.mjs`; the Supabase dashboard steps (public
+  signup OFF, Before User Created hook) are outstanding — `pending-user-actions.md` §1b.
 - Owner credential/account actions remain outstanding; both edge Workers
   (`poi-service`, `image-service`) are deployed to staging and production, so what
   is left there is the POI Google Places key, a Cloudflare deploy API token, and

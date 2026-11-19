@@ -669,5 +669,19 @@
       "version_title": "版本",
       "version_body": "CafeMood {version}——持续打磨中的作品。"
     }
+  },
+  "beta": {
+    "kicker": "内测 · 仅限受邀",
+    "title": "CafeMood 内测中",
+    "body": "先把门开一条缝，邀请一小圈咖啡同路人先进来。用 Google 登录，看看你在不在名单上。",
+    "deniedKicker": "暂未受邀",
+    "deniedTitle": "这个账号还不在名单里",
+    "deniedBody": "内测只邀请，不开放。可以申请邀请，或换一个 Google 账号登录。",
+    "signedInAs": "当前登录：{email}",
+    "request": "申请内测邀请",
+    "requestSubject": "CafeMood 内测邀请申请",
+    "footerPrivacy": "隐私",
+    "footerTerms": "条款",
+    "footerAbout": "关于"
   }
 }

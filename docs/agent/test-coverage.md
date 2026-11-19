@@ -53,6 +53,7 @@ Notes:
   remain distinct; invalid, unknown and private cafes return 404. Only the
   guest-auth seam is mocked; Postgres, the guard and renderer remain real.
   These benign regressions do not reproduce an exploit.
+| T29 | Closed beta admission — `beta_allowlist` decides every page render and API call: anonymous → `/beta`, unlisted session → refusal + `beta.denied` audit line, allowlisted → product; the `before-user-created` hook refuses unlisted signups | 0001 §Closed beta, 0011 D6/D7 | `integration` + `browser` | `web/tests/integration/http-beta-gate.integration.test.ts` (real `proxy()` rewrite vs pass-through for anonymous/unlisted/revoked/forged/allowlisted requests, next-request denial after a revoke with no cache reset, `/cafes/*/og-image` left reachable, `apiRoute` 401→403→200 envelope on the same route, `GET /auth/callback` refusal lands on `/beta?denied=1` with no profile row, `beta_before_user_created` body, operator CLI add/list/remove against real Postgres) · `web/tests/devops/cache-rules-drift.test.ts` (checked-in ruleset carries the `/cafes/*` bypass and no cache-eligible rule while the gate is on; the cacheable contract returns when it is off) · `web/scripts/beta-gate-e2e.mjs` (production build with `BETA_MODE=1`: anonymous page + deep link + API 401, refused session sees the refusal copy and no product shell, admitted session reaches the shell + API 200; screenshots in `.e2e-artifacts/beta-gate/`) | `test:integration:http` · `test:e2e:beta` |
 
 ## 2. Efficiency — no duplication via helpers (S1)
 

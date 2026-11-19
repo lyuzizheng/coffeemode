@@ -31,6 +31,10 @@ export const POST = apiRoute(
     auth: "optional",
     origin: true,
     route: "POST /api/auth/session",
+    // Admission cannot exist before this route runs: `completeSignIn` is the
+    // closed-beta gate itself (BRAWUKA-970) and refuses a non-allowlisted
+    // identity with 403 `beta_not_allowed`.
+    betaExempt: true,
   },
   async (request, ctx) => {
     const body = await readJsonBody<{ access_token?: unknown; refresh_token?: unknown }>(
@@ -83,7 +87,13 @@ export const POST = apiRoute(
       return apiError("unauthorized", 401, { requestId: ctx.requestId });
     }
 
-    if (!(await completeSignIn({ request, supabase, user, route: ctx.route }))) {
+    const completed = await completeSignIn({ request, supabase, user, route: ctx.route });
+    if (completed === "beta_denied") {
+      // The session this request just created has been destroyed again; the
+      // client must land on the beta surface, not on an auth-error banner.
+      return apiError("beta_not_allowed", 403, { requestId: ctx.requestId });
+    }
+    if (completed !== "ok") {
       return apiError("internal_error", 500, { requestId: ctx.requestId });
     }
 

@@ -48,6 +48,11 @@ function spawnMainServer({ root, port, dbUrl, supabaseUrl, supabaseAnonKey, onDa
       // supabase-mock (compose service, :54321) for session validation.
       NEXT_PUBLIC_SUPABASE_URL: supabaseUrl,
       NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: supabaseAnonKey,
+      // Closed beta (BRAWUKA-970): the product ships gated (`beta.enabled`
+      // in app.yaml), so this journey harness opens the gate exactly as a
+      // staging operator does. The gate itself has its own proof in
+      // `scripts/beta-gate-e2e.mjs`, which spawns a server with it ON.
+      BETA_MODE: "0",
       // BRAWUKA-755: controlled handler latency for the T28 duration
       // lower-bound proof — inside the real dependency path, capped
       // server-side at 500ms. The managed harness always forwards the
@@ -72,6 +77,9 @@ function spawnDeadServer({ root, port }) {
       DATABASE_URL: DEAD_DATABASE_URL,
       NEXT_PUBLIC_SUPABASE_URL: "",
       NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: "",
+      // Same reason as the main server: a gated build would answer the dead
+      // DB with the beta page instead of the render error this probe proves.
+      BETA_MODE: "0",
     },
   });
   return child;

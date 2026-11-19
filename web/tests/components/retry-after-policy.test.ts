@@ -4,7 +4,7 @@
  * query must not park for minutes); the like toggle waits out the full
  * header so a 45 s edge window is not re-entered at 30 s.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { ApiError, parseRetryAfterMs, RETRY_AFTER_CAP_MS } from "@/lib/http";
 import { queryRetryDelay } from "@/lib/query/retry";
 
@@ -19,6 +19,19 @@ describe("parseRetryAfterMs", () => {
     expect(parseRetryAfterMs(new Date(Date.now() + at * 1000).toUTCString())).toBeGreaterThan(
       0,
     );
+  });
+
+  it("parses an HTTP-date exactly at the 32-bit timer ceiling", () => {
+    const ceiling = 2 ** 31 - 1;
+    // HTTP-dates carry whole seconds; the .353 offset makes the truncated
+    // target minus `Date.now()` land on exactly 2,147,483,647 ms.
+    vi.useFakeTimers({ now: Date.parse("2026-11-19T00:00:00.353Z") });
+    try {
+      const header = new Date(Date.now() + ceiling).toUTCString();
+      expect(parseRetryAfterMs(header)).toBe(ceiling);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("returns undefined for absent, malformed, and non-positive values", () => {

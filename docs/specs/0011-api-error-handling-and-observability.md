@@ -244,10 +244,10 @@ does not replace:
   whose 429 the client can replay — retries once after the server's
   `Retry-After`, because `guard()` rejects before the handler and a
   pre-origin edge 429 never arrives, so no state can have changed. The delay
-  is the full header value **up to the native timer ceiling**
-  (`MAX_TIMER_DELAY_MS`, 2^31−1 ms): a larger delay is not replayed at all,
-  because `setTimeout` truncates it to a signed 32-bit int and would fire in
-  ~0 ms. The predicate and delay live beside that mutation in
+  is the full header value **up to and including the native timer ceiling**
+  (`MAX_TIMER_DELAY_MS`, 2^31−1 ms = 2,147,483,647 ms); a larger delay is not
+  replayed at all, because `setTimeout` truncates it to a signed 32-bit int
+  and would fire in ~0 ms. The predicate and delay live beside that mutation in
   `use-checkin-feed.ts`, not as a shared exported policy (spec 0009 §6);
   every other mutation failure is never replayed.
 - All ~30 raw `fetch('/api/...')` call sites migrate to `apiFetch`; the 401
@@ -336,10 +336,11 @@ complete; growth happens only with new routes.
   (`likeReplayDelay`) waits it out in full, so the query policy's 30 s
   `RETRY_AFTER_CAP_MS` cannot clip a 60 s `cafes-write` window and burn the
   single attempt. The card stays disabled through the wait and the replay.
-  A `Retry-After` at or above `MAX_TIMER_DELAY_MS` (2^31−1 ms) is not
-  replayed: native timers truncate the delay to a signed 32-bit int, so the
-  retry would fire in ~0 ms — an immediate second POST into the same
-  exhausted limit. The toggle then fails fast (rollback + toast). Every
+  A `Retry-After` above `MAX_TIMER_DELAY_MS` (2^31−1 ms) is not replayed:
+  the ceiling itself is representable, but a larger delay is truncated by
+  native timers to a signed 32-bit int, so the retry would fire in ~0 ms —
+  an immediate second POST into the same exhausted limit. The toggle then
+  fails fast (rollback + toast). Every
   other mutation failure stays `retry: 0`: the write may have committed, so
   the user retries manually. If the replay also 429s, the UI rolls back and
   shows the localized fallback.

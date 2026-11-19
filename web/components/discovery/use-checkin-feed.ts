@@ -194,22 +194,23 @@ const MAX_TIMER_DELAY_MS = 2 ** 31 - 1;
  * — so the toggle cannot double-apply. Every other failure stays `retry: 0`:
  * the write may have committed, and a replay would flip the toggle twice.
  *
- * A delay the native timer cannot represent is not replayed at all: passing
- * it to `setTimeout` would fire the retry in ~0 ms, i.e. an immediate second
+ * A delay above the native timer's range is not replayed at all: passing it
+ * to `setTimeout` would fire the retry in ~0 ms, i.e. an immediate second
  * POST against the same exhausted limit. Failing fast (rollback + toast) is
- * strictly better than a guaranteed-to-fail early replay.
+ * strictly better than a guaranteed-to-fail early replay. The ceiling itself
+ * (`2_147_483_647` ms) is representable and is replayed on schedule.
  */
 function shouldReplayLike(failureCount: number, error: unknown): boolean {
   if (failureCount !== 0 || !(error instanceof ApiError) || error.status !== 429) {
     return false;
   }
   const delay = error.retryAfterMs ?? 0;
-  return delay >= 0 && delay < MAX_TIMER_DELAY_MS;
+  return delay >= 0 && delay <= MAX_TIMER_DELAY_MS;
 }
 
 /**
- * Wait out the server's **full** `Retry-After` for that replay, up to the
- * timer ceiling enforced by `shouldReplayLike`. Unlike `queryRetryDelay`
+ * Wait out the server's **full** `Retry-After` for that replay, up to and
+ * including the timer ceiling enforced by `shouldReplayLike`. Unlike `queryRetryDelay`
  * (which bounds a buggy upstream at `RETRY_AFTER_CAP_MS`), a toggle must
  * reach the end of the window the server named — the `cafes-write` bucket is
  * 60 s, so a 30 s cap would replay into the same exhausted window and burn

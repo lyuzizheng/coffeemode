@@ -17,6 +17,8 @@
  *     cap), the card stays disabled while it waits, then settles at 0.
  *   - a `Retry-After` past the 32-bit timer ceiling: no replay at all — the
  *     native timer would fire it in ~0 ms, so the toggle fails fast instead.
+ *   - a `Retry-After` exactly at the ceiling (2,147,483,647 ms): replayed on
+ *     schedule, not one millisecond earlier.
  *   - a persistent 429: exactly two attempts, optimistic state rolls back to
  *     liked/1, and the localized failure toast fires.
  */
@@ -282,6 +284,57 @@ describe("useCheckinFeed like/unlike under rate limiting", () => {
       liked_by_viewer: true,
       likes_count: 1,
     });
+  });
+
+  it("replays at the inclusive timer ceiling, not before", async () => {
+    const TIMER_CEILING_MS = 2 ** 31 - 1;
+    vi.useFakeTimers();
+    try {
+      const queryClient = makeQueryClient();
+      seedFeed(queryClient, true, 1);
+      const replay = deferred<LikeResponse>();
+      likeResponses = [rateLimited(TIMER_CEILING_MS), replay.promise];
+
+      const { result } = renderHook(() => useCheckinFeed(CAFE_ID, "newest"), {
+        wrapper: wrapper(queryClient),
+      });
+
+      await act(async () => {
+        result.current.like(publicCheckIn(true, 1));
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(likePostCount()).toBe(1);
+      expect(result.current.likePendingIds.has(CHECKIN_ID)).toBe(true);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(TIMER_CEILING_MS - 1);
+      });
+      expect(likePostCount()).toBe(1);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1);
+      });
+      expect(likePostCount()).toBe(2);
+      expect(result.current.likePendingIds.has(CHECKIN_ID)).toBe(true);
+
+      await act(async () => {
+        replay.resolve({ liked: false, likes_count: 0 });
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(result.current.likePendingIds.size).toBe(0);
+      expect(cachedCheckin(queryClient)).toMatchObject({
+        liked_by_viewer: false,
+        likes_count: 0,
+      });
+      expect(toastMock).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("rolls back and toasts when the 429 persists", async () => {

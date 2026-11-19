@@ -43,14 +43,20 @@ function stripQuery(url: string): string {
 }
 
 /**
- * Cap on a server-supplied `Retry-After`: a buggy upstream must not park a
- * query for minutes. Matches the order of TanStack's default backoff cap.
+ * Cap applied by the **query** retry policy to a server-supplied
+ * `Retry-After`: a buggy upstream must not park a background query for
+ * minutes. Matches the order of TanStack's default backoff cap. It is a
+ * policy bound, not a parser bound — `parseRetryAfterMs` returns the server's
+ * full value so a caller that must wait it out (BRAWUKA-1020's like replay)
+ * can.
  */
 export const RETRY_AFTER_CAP_MS = 30_000;
 
 /**
- * Parse a `Retry-After` header (delta-seconds or HTTP-date) into a delay in
- * ms, capped at `RETRY_AFTER_CAP_MS`. Absent/unparseable → `undefined`.
+ * Parse a `Retry-After` header (delta-seconds or HTTP-date) into the server's
+ * full positive delay in ms. Absent/unparseable/non-positive → `undefined`.
+ * Bounding is each retry policy's decision (`queryRetryDelay` caps queries at
+ * `RETRY_AFTER_CAP_MS`); the header value itself is never clipped here.
  */
 export function parseRetryAfterMs(header: string | null): number | undefined {
   if (header === null) return undefined;
@@ -58,7 +64,7 @@ export function parseRetryAfterMs(header: string | null): number | undefined {
   const seconds = /^\d+$/.test(trimmed) ? Number(trimmed) : NaN;
   const ms = Number.isNaN(seconds) ? Date.parse(trimmed) - Date.now() : seconds * 1000;
   if (!Number.isFinite(ms) || ms <= 0) return undefined;
-  return Math.min(ms, RETRY_AFTER_CAP_MS);
+  return ms;
 }
 
 /**
@@ -78,7 +84,7 @@ export class ApiError extends Error {
   readonly requestId?: string;
   /** Server-authored diagnostic (envelope `message`). Logs only — never render. */
   readonly serverMessage?: string;
-  /** Parsed `Retry-After` delay on 429 responses; the retry policy honors it once. */
+  /** Full parsed `Retry-After` delay on 429 responses; each retry policy bounds its own wait. */
   readonly retryAfterMs?: number;
 
   constructor(init: {

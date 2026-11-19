@@ -41,6 +41,15 @@ proxied (BRAWUKA-235, derived from BRAWUKA-233 P1). Lives next to
   There is no second sink: the Better Stack POST that used to sit beside the
   log line was removed with Better Stack itself (BRAWUKA-611), so the log line
   is the only record and the only thing the alert rule reads.
+- **429 source triage**: the app writes one `stage:"route"` access line with
+  `status:429` (plus the `rate_limited` warn line) for every denial it
+  produces, so a browser-observed 429 with **no** matching app line was
+  blocked before the origin — the edge rate-limit rule (or another proxy).
+  This is how BRAWUKA-1020 was resolved: the unlike POST and a parallel
+  `/api/profile` GET 429'd with the liker's `cafes-write` bucket at 1/10 and
+  no app line, i.e. an IP-scoped edge block, not a per-user app bucket.
+  When the app line is present, read `bucket` / `client_id` / `route` from it
+  instead of guessing.
 - `otlp-logs` hook (BRAWUKA-607, BRAWUKA-613, `web/lib/observability/otlp-logs.ts`) ships
   every `logError`/`logWarn` JSON line, the `type:"access"` completion line, and
   search telemetry (`type:"search.telemetry"`, ADR-0005) to Grafana Cloud Loki

@@ -35,11 +35,14 @@ type CdpCall = { method: string; params?: Record<string, unknown> };
  * honours (name, domain, path) like the real Network domain; `getCookies`
  * filters by domain applicability, which is the part the bug depended on.
  */
-function fakePage(initial: CdpCookie[], { ignoreDeletes = false } = {}) {
+function fakePage(initial: CdpCookie[], { ignoreDeletes = false, userAgent = "" } = {}) {
   const jar = initial.map((cookie) => ({ path: "/", value: "", ...cookie })) as Required<CdpCookie>[];
   const calls: CdpCall[] = [];
 
   const page = {
+    async evaluate(): Promise<unknown> {
+      return userAgent;
+    },
     async cdp(method: string, params?: unknown): Promise<unknown> {
       const p = (params ?? {}) as Record<string, unknown>;
       calls.push({ method, params: p });
@@ -209,7 +212,9 @@ describe("agent-QA Access cookie bootstrap (BRAWUKA-1026)", () => {
         return fakeResponse(200, [`${ACCESS_COOKIE_NAME}=fresh-token; Domain=${STAGING_HOST}; Path=/; HttpOnly`]);
       }) as typeof fetch;
 
-      await expect(fetchAccessCookie(STAGING_URL, PAIR, { fetchImpl })).resolves.toBe("fresh-token");
+      await expect(
+        fetchAccessCookie(STAGING_URL, PAIR, { fetchImpl, userAgent: "Mozilla/5.0 (TestBrowser)" }),
+      ).resolves.toBe("fresh-token");
 
       expect(requests).toHaveLength(1);
       expect(requests[0].url).toBe(STAGING_URL);
@@ -217,6 +222,20 @@ describe("agent-QA Access cookie bootstrap (BRAWUKA-1026)", () => {
       const headers = requests[0].init?.headers as Record<string, string>;
       expect(headers["CF-Access-Client-Id"]).toBe(PAIR.clientId);
       expect(headers["CF-Access-Client-Secret"]).toBe(PAIR.clientSecret);
+      expect(headers["user-agent"]).toBe("Mozilla/5.0 (TestBrowser)");
+    });
+
+    it("presents a browser user agent by default, never Node's", async () => {
+      const requests: Array<{ init?: RequestInit }> = [];
+      const fetchImpl = (async (_url: string | URL | Request, init?: RequestInit) => {
+        requests.push({ init });
+        return fakeResponse(200, [`${ACCESS_COOKIE_NAME}=fresh-token; Path=/`]);
+      }) as typeof fetch;
+
+      await fetchAccessCookie(STAGING_URL, PAIR, { fetchImpl });
+
+      const headers = requests[0].init?.headers as Record<string, string>;
+      expect(headers["user-agent"]).toMatch(/^Mozilla\/5\.0 .*Chrome\//);
     });
 
     it("stops on a redirect status without following it", async () => {
@@ -249,15 +268,24 @@ describe("agent-QA Access cookie bootstrap (BRAWUKA-1026)", () => {
 
   describe("per-round bootstrap", () => {
     it("purges the shadow, stamps host-only, and verifies one cookie", async () => {
-      const { page, jar, calls } = fakePage([
-        { name: ACCESS_COOKIE_NAME, domain: ".cafemood.app", value: "stale-parent-domain" },
-        { name: "theme", domain: STAGING_HOST, value: "dark" },
-      ]);
-      const fetchImpl = (async () => fakeResponse(200, [`${ACCESS_COOKIE_NAME}=fresh-token; Path=/`])) as typeof fetch;
+      const { page, jar, calls } = fakePage(
+        [
+          { name: ACCESS_COOKIE_NAME, domain: ".cafemood.app", value: "stale-parent-domain" },
+          { name: "theme", domain: STAGING_HOST, value: "dark" },
+        ],
+        { userAgent: "Mozilla/5.0 (QaBrowser) Chrome/152.0.0.0" },
+      );
+      const fetchHeaders: Array<Record<string, string>> = [];
+      const fetchImpl = (async (_url: string | URL | Request, init?: RequestInit) => {
+        fetchHeaders.push(init?.headers as Record<string, string>);
+        return fakeResponse(200, [`${ACCESS_COOKIE_NAME}=fresh-token; Path=/`]);
+      }) as typeof fetch;
 
       await expect(ensureSingleAccessCookie(page, { stagingUrl: STAGING_URL, pair: PAIR, fetchImpl })).resolves.toEqual(
         { purgedDomains: [".cafemood.app"] },
       );
+
+      expect(fetchHeaders[0]["user-agent"]).toBe("Mozilla/5.0 (QaBrowser) Chrome/152.0.0.0");
 
       expect(jar.filter((cookie) => cookie.name === ACCESS_COOKIE_NAME)).toEqual([
         { name: ACCESS_COOKIE_NAME, value: "fresh-token", domain: STAGING_HOST, path: "/" },
@@ -272,6 +300,19 @@ describe("agent-QA Access cookie bootstrap (BRAWUKA-1026)", () => {
       const stamp = calls.find((call) => call.method === "Network.setCookie");
       expect(stamp?.params).toMatchObject({ url: `https://${STAGING_HOST}/`, path: "/", secure: true, httpOnly: true });
       expect(stamp?.params).not.toHaveProperty("domain");
+    });
+
+    it("falls back to the browser constant when the page reports no UA", async () => {
+      const { page } = fakePage([]);
+      const seen: string[] = [];
+      const fetchImpl = (async (_url: string | URL | Request, init?: RequestInit) => {
+        seen.push((init?.headers as Record<string, string>)["user-agent"]);
+        return fakeResponse(200, [`${ACCESS_COOKIE_NAME}=fresh-token; Path=/`]);
+      }) as typeof fetch;
+
+      await ensureSingleAccessCookie(page, { stagingUrl: STAGING_URL, pair: PAIR, fetchImpl });
+
+      expect(seen[0]).toMatch(/^Mozilla\/5\.0 .*Chrome\//);
     });
 
     it("fails closed with the run-log signature when a shadow survives deletion", async () => {

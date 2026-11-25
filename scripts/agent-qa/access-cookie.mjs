@@ -54,6 +54,16 @@ import { isAccessHost } from "./allowlist.mjs";
 export const ACCESS_COOKIE_NAME = "CF_Authorization";
 
 /**
+ * User agent for the token-pair fetch. Staging sits behind a bot-challenge
+ * layer that 403s a non-browser UA (the QA preflight curls with a browser UA
+ * for the same reason), so the request presents the browser's own identity.
+ * `ensureSingleAccessCookie` reads the live Chromium UA; this constant is the
+ * direct-call fallback and the shape the 2026-11-20 evidence proved with a 200.
+ */
+export const ACCESS_FALLBACK_USER_AGENT =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36";
+
+/**
  * ego lite profile reserved for automated QA: the built-in profile, NOT the
  * Owner's imported `Profile 1`. `profiles()` ids are stable per install.
  */
@@ -172,17 +182,19 @@ export function readAccessCookieValue(headers, name = ACCESS_COOKIE_NAME) {
  * Trade the service-token pair for a `CF_Authorization` value with a direct
  * Node fetch — never a browser request, so the pair stays out of the page and
  * away from third-party origins. Redirects are NOT followed: a 3xx means the
- * Access application rejected the token and the run must stop.
+ * Access application rejected the token and the run must stop. The request
+ * carries a browser user agent because the staging bot layer challenges
+ * anything else.
  *
  * @param {string} stagingUrl Access-protected staging URL (must be an Access host)
  * @param {{ clientId: string, clientSecret: string }} pair resolved token pair
- * @param {{ fetchImpl?: typeof fetch, timeoutMs?: number }} [opts]
+ * @param {{ fetchImpl?: typeof fetch, timeoutMs?: number, userAgent?: string }} [opts]
  * @returns {Promise<string>} the cookie value (header-only; never logged)
  */
 export async function fetchAccessCookie(
   stagingUrl,
   pair,
-  { fetchImpl = globalThis.fetch, timeoutMs = 10_000 } = {},
+  { fetchImpl = globalThis.fetch, timeoutMs = 10_000, userAgent = ACCESS_FALLBACK_USER_AGENT } = {},
 ) {
   const url = new URL(String(stagingUrl));
   if (!isAccessHost(url.hostname)) {
@@ -197,6 +209,7 @@ export async function fetchAccessCookie(
     headers: {
       "CF-Access-Client-Id": pair.clientId,
       "CF-Access-Client-Secret": pair.clientSecret,
+      "user-agent": userAgent,
     },
     signal: AbortSignal.timeout(timeoutMs),
   });
@@ -293,14 +306,22 @@ export async function verifySingleAccessCookie(page, stagingUrl) {
  * Full bootstrap: purge shadows → fetch a fresh value with the token pair →
  * stamp host-only → verify. Call once per round, before the first `goto()`.
  *
- * @param {{ cdp: (method: string, params?: unknown) => Promise<unknown> }} page ego-browser Page
+ * The token-pair fetch presents the live Chromium user agent so the staging bot
+ * layer sees the same identity as the browser that will use the cookie.
+ *
+ * @param {{ cdp: (method: string, params?: unknown) => Promise<unknown>, evaluate?: (fn: () => unknown) => Promise<unknown> }} page ego-browser Page
  * @param {{ stagingUrl: string, pair: { clientId: string, clientSecret: string }, fetchImpl?: typeof fetch }} opts
  * @returns {Promise<{ purgedDomains: string[] }>}
  */
 export async function ensureSingleAccessCookie(page, { stagingUrl, pair, fetchImpl }) {
   const host = new URL(String(stagingUrl)).hostname;
   const purgedDomains = await purgeShadowingAccessCookies(page, host);
-  const value = await fetchAccessCookie(stagingUrl, pair, { fetchImpl });
+  const browserUa = await Promise.resolve()
+    .then(() => page.evaluate?.(() => navigator.userAgent))
+    .catch(() => "");
+  const userAgent =
+    typeof browserUa === "string" && browserUa.startsWith("Mozilla/") ? browserUa : ACCESS_FALLBACK_USER_AGENT;
+  const value = await fetchAccessCookie(stagingUrl, pair, { fetchImpl, userAgent });
   await stampHostOnlyAccessCookie(page, stagingUrl, value);
   await verifySingleAccessCookie(page, stagingUrl);
   return { purgedDomains };

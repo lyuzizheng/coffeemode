@@ -50,6 +50,43 @@ cookie-only path never stalled). Fail-closed throughout:
 unparsable/off-Access-scope URLs never receive headers, and a
 paused request is always continued (never left hanging).
 
+## Dedicated profile + one host-only cookie (BRAWUKA-1026)
+
+The 2026-11-20 scheduled round died at the Access login page with
+`env-failure:access-cookie-shadowed`. Cause: the QA browser ran on Owner's
+personal ego profile, whose jar is shared with Owner's tabs and every other
+space on it. A session `CF_Authorization` scoped to `.cafemood.app` came along;
+Cloudflare sends one same-name cookie, the parent-domain one won, and every
+Document navigation answered 302 while the host-only cookie the runner had
+stamped sat unused.
+
+`access-cookie.mjs` makes the failure unrepresentable in two moves:
+
+1. **Dedicated profile.** Create the QA space with
+   `taskSpace(name, { profileId: resolveAgentQaProfile(await profiles()).id })`
+   — ego lite's built-in `Default` profile, never Owner's imported `Profile 1`.
+   A missing profile aborts as `env-failure:qa-profile-missing`; there is no
+   fallback. This is also what makes step 2 safe: a `.cafemood.app` cookie in
+   the personal profile may be Owner's production Access session.
+2. **One host-only cookie, verified.** `ensureSingleAccessCookie(page, {
+   stagingUrl, pair })` deletes every `CF_Authorization` that would be sent to
+   the staging host and is not host-only (scoped `Network.deleteCookies`, never
+   a profile-wide clear), trades the token pair for a fresh value with a direct
+   Node fetch, stamps it with `Network.setCookie({ url })` — no `domain`, which
+   is what keeps it host-only — then reads `Network.getCookies` back and asserts
+   exactly one. Any violation throws the `env-failure:access-cookie-shadowed`
+   signature instead of spending a journey round on the login page.
+
+`verifySingleAccessCookie(page, stagingUrl)` re-checks the invariant on its own
+and is cheap enough to call before each journey; the bootstrap returns only
+the purged domains, never a value or token.
+
+Verified on this machine 2026-11-25 against the real Chromium jar in the
+`Default` profile: a stamped `.cafemood.app` decoy is detected and deleted,
+`Network.getCookies` reports both cookies when they coexist, and after
+`ensureSingleAccessCookie` the jar holds exactly one cookie, domain
+`staging.cafemood.app`.
+
 ## Secret-bridge contract (F8)
 
 The ego-browser Node process does NOT inherit the agent's env, so

@@ -4,6 +4,45 @@ Deterministic, non-LLM harness an agent-QA run uses against staging
 (BRAWUKA-408): Cloudflare Access injection, session bootstrap, personas,
 ledger, allowlist guard, quotas, cleanup.
 
+## Closed-beta gate: staging runs `BETA_MODE=0` (BRAWUKA-1043)
+
+The product ships gated (`web/config/app.yaml` → `beta.enabled: true`) and the
+staging deployment opens it: the Dokploy application `coffeemode-web-staging`
+carries `BETA_MODE=0` in its environment. Without that flag every journey this
+harness owns is refused before its first assertion — `p0` needs the anonymous
+discovery sheet (`/` renders the beta surface instead, `/api/cafes` answers
+401), `p1` needs an admitted session, and `p3-social-like` needs a second
+identity that no roster row admits.
+
+Two consequences for a round:
+
+- The flag is deployment environment, not repo state: it survives redeploys
+  because it lives in the Dokploy application env (saved through
+  `application.saveEnvironment`, reloaded into the swarm service). A run that
+  sees the beta surface or a 401 `unauthorized` on an anonymous product route
+  has found `env-failure:beta-gate-on`, not a product defect — stop and report
+  it instead of spending the round.
+- Never re-enable the gate to "check the beta page" during a journey round.
+  The gate's own states are covered by `web/tests/integration/http-beta-gate`
+  and `web/scripts/beta-gate-e2e.mjs` (production build, `BETA_MODE=1`). If an
+  acceptance window does need a gated deployment, gate admission comes from
+  `beta_allowlist` in the staging PostGIS database: the persistent
+  `agent-qa-regular@coffeemode.test` persona is on that roster, and a per-run
+  `agent-qa-fresh-<runId>` identity is not — it needs a row first:
+
+  ```bash
+  node scripts/beta-allowlist.mjs add agent-qa-fresh-<runId>@coffeemode.test \
+    --note "agent-QA round <runId>"
+  ```
+
+  There is no roster write inside this harness, and none may be added: the
+  roster lives in the application database (ADR-0010 §1), not in Supabase.
+
+The edge ruleset is generated from `beta.enabled`, not from `BETA_MODE`, so
+staging keeps the `/cafes/*` bypass while it runs gate-off: responses simply
+miss shared cache, and the failure the bypass prevents — a cached shell
+outliving the gate — cannot happen. No purge is owed for this state.
+
 ## Cloudflare Access: per-origin injection (BRAWUKA-508)
 
 `CF-Access-*` is a network-layer identity: it MUST reach only

@@ -10,6 +10,7 @@ import {
   readAccessCookieValue,
   resolveAgentQaProfile,
   shadowingAccessCookies,
+  verifySingleAccessCookie,
 } from "../../../scripts/agent-qa/access-cookie.mjs";
 
 // BRAWUKA-1026: the nightly QA runner stopped at the Cloudflare Access login
@@ -68,10 +69,6 @@ function fakePage(initial: CdpCookie[], { ignoreDeletes = false, userAgent = "" 
         else jar.push(cookie);
         return { success: true };
       }
-      if (method === "Network.getCookies") {
-        const hosts = (p.urls as string[]).map((url) => new URL(url).hostname);
-        return { cookies: jar.filter((cookie) => hosts.some((host) => cookieDomainApplies(cookie.domain, host))) };
-      }
       throw new Error(`fakePage does not implement ${method}`);
     },
   };
@@ -105,12 +102,14 @@ describe("agent-QA Access cookie bootstrap (BRAWUKA-1026)", () => {
   });
 
   describe("cookie domain matching", () => {
-    it("treats the host and every parent suffix as applicable", () => {
+    it("matches a leading-dot domain against subdomains and a bare domain exactly", () => {
       expect(cookieDomainApplies(STAGING_HOST, STAGING_HOST)).toBe(true);
       expect(cookieDomainApplies(`.${STAGING_HOST}`, STAGING_HOST)).toBe(true);
       expect(cookieDomainApplies(".cafemood.app", STAGING_HOST)).toBe(true);
-      expect(cookieDomainApplies("cafemood.app", STAGING_HOST)).toBe(true);
       expect(cookieDomainApplies(".app", STAGING_HOST)).toBe(true);
+      // Host-only cookie on the parent: Chromium never sends it to a subdomain.
+      expect(cookieDomainApplies("cafemood.app", STAGING_HOST)).toBe(false);
+      expect(cookieDomainApplies("cafemood.app", "cafemood.app")).toBe(true);
     });
 
     it("rejects unrelated, empty, and production-host domains for the staging host", () => {
@@ -146,8 +145,18 @@ describe("agent-QA Access cookie bootstrap (BRAWUKA-1026)", () => {
       expect(shadowingAccessCookies(cookies, STAGING_HOST)).toHaveLength(1);
     });
 
-    it("leaves a single host-only cookie alone", () => {
+    it("leaves a single canonical cookie alone", () => {
       expect(shadowingAccessCookies([{ name: ACCESS_COOKIE_NAME, domain: STAGING_HOST }], STAGING_HOST)).toEqual([]);
+    });
+
+    it("leaves a host-only cookie for another host alone", () => {
+      expect(shadowingAccessCookies([{ name: ACCESS_COOKIE_NAME, domain: "cafemood.app" }], STAGING_HOST)).toEqual([]);
+    });
+
+    it("flags a same-name cookie on another path", () => {
+      const cookies = [{ name: ACCESS_COOKIE_NAME, domain: STAGING_HOST, path: "/api" }];
+
+      expect(shadowingAccessCookies(cookies, STAGING_HOST)).toHaveLength(1);
     });
   });
 
@@ -174,7 +183,15 @@ describe("agent-QA Access cookie bootstrap (BRAWUKA-1026)", () => {
           ],
           STAGING_HOST,
         ),
-      ).toThrow(/found 2 \(domains: \.cafemood\.app, staging\.cafemood\.app\)/);
+      ).toThrow(/found 2 \(domains: \.cafemood\.app, staging\.cafemood\.app; paths: \/, \//);
+
+      // A second cookie on another path is sent to that path and can shadow there.
+      expect(() =>
+        assertSingleHostOnlyAccessCookie(
+          [{ name: ACCESS_COOKIE_NAME, domain: STAGING_HOST, path: "/api" }],
+          STAGING_HOST,
+        ),
+      ).toThrow(/found 1 \(domains: staging\.cafemood\.app; paths: \/api\)/);
       expect(() =>
         assertSingleHostOnlyAccessCookie([{ name: ACCESS_COOKIE_NAME, domain: ".cafemood.app" }], STAGING_HOST),
       ).toThrow(/env-failure:access-cookie-shadowed/);
@@ -264,6 +281,19 @@ describe("agent-QA Access cookie bootstrap (BRAWUKA-1026)", () => {
       );
       expect(called).toBe(false);
     });
+
+    it("refuses plaintext before sending the pair", async () => {
+      let called = false;
+      const fetchImpl = (async () => {
+        called = true;
+        return fakeResponse(200);
+      }) as typeof fetch;
+
+      await expect(fetchAccessCookie("http://staging.cafemood.app/api/health", PAIR, { fetchImpl })).rejects.toThrow(
+        /requires HTTPS/,
+      );
+      expect(called).toBe(false);
+    });
   });
 
   describe("per-round bootstrap", () => {
@@ -271,6 +301,7 @@ describe("agent-QA Access cookie bootstrap (BRAWUKA-1026)", () => {
       const { page, jar, calls } = fakePage(
         [
           { name: ACCESS_COOKIE_NAME, domain: ".cafemood.app", value: "stale-parent-domain" },
+          { name: ACCESS_COOKIE_NAME, domain: STAGING_HOST, value: "stale-api", path: "/api" },
           { name: "theme", domain: STAGING_HOST, value: "dark" },
         ],
         { userAgent: "Mozilla/5.0 (QaBrowser) Chrome/152.0.0.0" },
@@ -282,7 +313,7 @@ describe("agent-QA Access cookie bootstrap (BRAWUKA-1026)", () => {
       }) as typeof fetch;
 
       await expect(ensureSingleAccessCookie(page, { stagingUrl: STAGING_URL, pair: PAIR, fetchImpl })).resolves.toEqual(
-        { purgedDomains: [".cafemood.app"] },
+        { purgedDomains: [".cafemood.app", STAGING_HOST] },
       );
 
       expect(fetchHeaders[0]["user-agent"]).toBe("Mozilla/5.0 (QaBrowser) Chrome/152.0.0.0");
@@ -300,6 +331,31 @@ describe("agent-QA Access cookie bootstrap (BRAWUKA-1026)", () => {
       const stamp = calls.find((call) => call.method === "Network.setCookie");
       expect(stamp?.params).toMatchObject({ url: `https://${STAGING_HOST}/`, path: "/", secure: true, httpOnly: true });
       expect(stamp?.params).not.toHaveProperty("domain");
+    });
+
+    it("refuses plaintext before touching the jar", async () => {
+      const { page, calls } = fakePage([]);
+      const fetchImpl = (async () => fakeResponse(200)) as typeof fetch;
+
+      await expect(
+        ensureSingleAccessCookie(page, {
+          stagingUrl: "http://staging.cafemood.app/",
+          pair: PAIR,
+          fetchImpl,
+        }),
+      ).rejects.toThrow(/requires HTTPS/);
+      expect(calls).toEqual([]);
+    });
+
+    it("fails closed when a same-name cookie is scoped to another path", async () => {
+      const { page } = fakePage([
+        { name: ACCESS_COOKIE_NAME, domain: STAGING_HOST, value: "root", path: "/" },
+        { name: ACCESS_COOKIE_NAME, domain: STAGING_HOST, value: "api", path: "/api" },
+      ]);
+
+      await expect(verifySingleAccessCookie(page, STAGING_URL)).rejects.toThrow(
+        /found 2 \(domains: staging\.cafemood\.app, staging\.cafemood\.app; paths: \/, \/api\)/,
+      );
     });
 
     it("falls back to the browser constant when the page reports no UA", async () => {
@@ -322,7 +378,7 @@ describe("agent-QA Access cookie bootstrap (BRAWUKA-1026)", () => {
       const fetchImpl = (async () => fakeResponse(200, [`${ACCESS_COOKIE_NAME}=fresh-token; Path=/`])) as typeof fetch;
 
       await expect(ensureSingleAccessCookie(page, { stagingUrl: STAGING_URL, pair: PAIR, fetchImpl })).rejects.toThrow(
-        /env-failure:access-cookie-shadowed — 1 non-host-only CF_Authorization cookie\(s\) survived/,
+        /env-failure:access-cookie-shadowed — 1 non-canonical CF_Authorization cookie\(s\) survived/,
       );
     });
 

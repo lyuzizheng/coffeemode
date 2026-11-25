@@ -68,17 +68,22 @@ stamped sat unused.
    A missing profile aborts as `env-failure:qa-profile-missing`; there is no
    fallback. This is also what makes step 2 safe: a `.cafemood.app` cookie in
    the personal profile may be Owner's production Access session.
-2. **One host-only cookie, verified.** `ensureSingleAccessCookie(page, {
-   stagingUrl, pair })` deletes every `CF_Authorization` that would be sent to
-   the staging host and is not host-only (scoped `Network.deleteCookies`, never
-   a profile-wide clear), trades the token pair for a fresh value with a direct
-   Node fetch, stamps it with `Network.setCookie({ url })` — no `domain`, which
-   is what keeps it host-only — then reads `Network.getCookies` back and asserts
-   exactly one. Any violation throws the `env-failure:access-cookie-shadowed`
-   signature instead of spending a journey round on the login page. The
-   token-pair fetch presents the live Chromium user agent (constant fallback):
-   the staging bot layer challenges a non-browser UA, and the 2026-11-20
-   evidence proves the cookie is issued to a browser-shaped request.
+2. **One canonical cookie, verified.** `ensureSingleAccessCookie(page, {
+   stagingUrl, pair })` accepts HTTPS on an Access host only, deletes every
+   `CF_Authorization` that would reach the staging host without being host-only
+   at path `/` — parent domains, dotted host domains, and same-name cookies on
+   other paths (scoped `Network.deleteCookies`, never a profile-wide clear) —
+   trades the token pair for a fresh value with a direct Node fetch, stamps it
+   with `Network.setCookie({ url })` — no `domain`, which is what keeps it
+   host-only — then reads the whole jar back and asserts exactly one canonical
+   cookie. Matching follows RFC 6265 §5.4: a bare domain is host-only and
+   matches only its exact host, so a host-only cookie on `cafemood.app` is
+   never touched. Any violation throws the
+   `env-failure:access-cookie-shadowed` signature instead of spending a journey
+   round on the login page. The token-pair fetch presents the live Chromium
+   user agent (constant fallback): the staging bot layer challenges a
+   non-browser UA, and the 2026-11-20 evidence proves the cookie is issued to a
+   browser-shaped request.
 
 `verifySingleAccessCookie(page, stagingUrl)` re-checks the invariant on its own
 and is cheap enough to call before each journey; the bootstrap returns only
@@ -86,9 +91,9 @@ the purged domains, never a value or token.
 
 Verified on this machine 2026-11-25 against the real Chromium jar in the
 `Default` profile: a stamped `.cafemood.app` decoy is detected and deleted,
-`Network.getCookies` reports both cookies when they coexist, and after
-`ensureSingleAccessCookie` the jar holds exactly one cookie, domain
-`staging.cafemood.app`.
+the jar reports every coexisting same-name cookie (including one scoped to
+`/api`), and after `ensureSingleAccessCookie` the jar holds exactly one, domain
+`staging.cafemood.app` at path `/`.
 
 ## Secret-bridge contract (F8)
 

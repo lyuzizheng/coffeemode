@@ -71,9 +71,10 @@ stamped sat unused.
 2. **One canonical cookie, verified.** `ensureSingleAccessCookie(page, {
    stagingUrl, pair })` accepts only the exact origin
    `AGENT_QA_CREDENTIAL_ORIGIN` (`https://staging.cafemood.app`: scheme, host,
-   and port must match). An Access tenant domain
-   (`*.cloudflareaccess.com`), an alternate port, or plaintext aborts before
-   any cookie is touched or any request is made. It then deletes every
+   and port must match) and the URL's own protocol must be `https:` — a
+   `blob:` URL serializes the inner origin, so it is refused before any cookie
+   or request. An Access tenant domain (`*.cloudflareaccess.com`), an
+   alternate port, or plaintext aborts the same way. It then deletes every
    `CF_Authorization` that would reach the staging host without being host-only
    at path `/` — parent domains, dotted host domains, and same-name cookies on
    other paths (scoped `Network.deleteCookies`, never a profile-wide clear) —

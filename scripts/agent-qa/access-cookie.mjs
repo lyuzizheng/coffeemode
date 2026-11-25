@@ -49,11 +49,10 @@ export const ACCESS_FALLBACK_USER_AGENT =
 export const AGENT_QA_EGO_PROFILE_ID = "Default";
 
 /**
- * The one origin allowed to receive the service-token pair. Exact match on
- * scheme, host, and port: an Access tenant domain (`*.cloudflareaccess.com`)
- * or an alternate port is a different origin and fails closed. The broader
- * `AGENT_QA_ACCESS_HOSTS` rule still governs fetch-level header injection for
- * Access handshake subresources; it never authorizes credentials.
+ * The one URL allowed to receive the service-token pair. {@link parseStagingUrl}
+ * requires both the `https:` protocol and this exact origin (scheme, host,
+ * port). Navigation allowlists (`AGENT_QA_ALLOWED_HOSTS`) and the broader
+ * header-injection hosts (`AGENT_QA_ACCESS_HOSTS`) never authorize credentials.
  */
 export const AGENT_QA_CREDENTIAL_ORIGIN = "https://staging.cafemood.app";
 
@@ -77,16 +76,24 @@ export function resolveAgentQaProfile(profiles) {
 }
 
 /**
- * Validate a staging URL before credentials or cookies touch it: the origin
- * must equal {@link AGENT_QA_CREDENTIAL_ORIGIN} exactly. `URL.origin` compares
- * scheme, host, and port, so plaintext (`http:`), an alternate port, and any
- * other Access tenant domain all fail closed without a request.
+ * Validate a staging URL before credentials or cookies touch it. The protocol
+ * must be `https:` itself — `URL.origin` alone does not catch `blob:`, whose
+ * origin serializes to the inner URL's — and the origin must equal
+ * {@link AGENT_QA_CREDENTIAL_ORIGIN} exactly. `URL.origin` compares scheme,
+ * host, and port, so an alternate port and any other Access tenant domain also
+ * fail closed without a request.
  *
  * @param {unknown} stagingUrl absolute staging URL
  * @returns {URL}
  */
 export function parseStagingUrl(stagingUrl) {
   const url = new URL(String(stagingUrl));
+  if (url.protocol !== "https:") {
+    throw new Error(
+      `Agent-QA Access bootstrap refused protocol "${url.protocol}": credentials and Access cookies ` +
+        `require an https: URL at ${AGENT_QA_CREDENTIAL_ORIGIN}.`,
+    );
+  }
   if (url.origin !== AGENT_QA_CREDENTIAL_ORIGIN) {
     throw new Error(
       `Agent-QA Access bootstrap refused origin "${url.origin}": credentials and Access cookies ` +

@@ -10,6 +10,7 @@ import {
   readAccessCookieValue,
   resolveAgentQaProfile,
   shadowingAccessCookies,
+  stampHostOnlyAccessCookie,
   verifySingleAccessCookie,
 } from "../../../scripts/agent-qa/access-cookie.mjs";
 
@@ -282,7 +283,21 @@ describe("agent-QA Access cookie bootstrap (BRAWUKA-1026)", () => {
         return fakeResponse(200);
       }) as typeof fetch;
 
-      await expect(fetchAccessCookie(url, PAIR, { fetchImpl })).rejects.toThrow(/refused origin/);
+      await expect(fetchAccessCookie(url, PAIR, { fetchImpl })).rejects.toThrow(/refused (protocol|origin)/);
+      expect(called).toBe(false);
+    });
+
+
+    it("refuses a blob: URL before sending the pair, even with the approved inner origin", async () => {
+      let called = false;
+      const fetchImpl = (async () => {
+        called = true;
+        return fakeResponse(200);
+      }) as typeof fetch;
+
+      await expect(fetchAccessCookie(`blob:${STAGING_URL}/1a2b`, PAIR, { fetchImpl })).rejects.toThrow(
+        /refused protocol "blob:"/,
+      );
       expect(called).toBe(false);
     });
 
@@ -328,6 +343,31 @@ describe("agent-QA Access cookie bootstrap (BRAWUKA-1026)", () => {
       const stamp = calls.find((call) => call.method === "Network.setCookie");
       expect(stamp?.params).toMatchObject({ url: `https://${STAGING_HOST}/`, path: "/", secure: true, httpOnly: true });
       expect(stamp?.params).not.toHaveProperty("domain");
+    });
+
+
+    it("refuses a blob: URL before touching the jar", async () => {
+      const { page, calls } = fakePage([]);
+      let fetched = false;
+      const fetchImpl = (async () => {
+        fetched = true;
+        return fakeResponse(200);
+      }) as typeof fetch;
+
+      await expect(
+        ensureSingleAccessCookie(page, { stagingUrl: `blob:${STAGING_URL}#x`, pair: PAIR, fetchImpl }),
+      ).rejects.toThrow(/refused protocol/);
+      expect(calls).toEqual([]);
+      expect(fetched).toBe(false);
+    });
+
+    it("refuses a blob: URL before Network.setCookie", async () => {
+      const { page, calls } = fakePage([]);
+
+      await expect(stampHostOnlyAccessCookie(page, `blob:${STAGING_URL}#x`, "v")).rejects.toThrow(
+        /refused protocol/,
+      );
+      expect(calls).toEqual([]);
     });
 
     it("refuses an off-origin URL before touching the jar", async () => {

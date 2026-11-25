@@ -6,8 +6,9 @@
  * sends one same-name cookie; the parent-domain cookie won and every Document
  * navigation answered 302 while the host-only cookie sat unused.
  *
- * Contract: dedicated profile ({@link AGENT_QA_EGO_PROFILE_ID}); HTTPS on an
- * Access host only; and exactly one canonical cookie for the staging host —
+ * Contract: dedicated profile ({@link AGENT_QA_EGO_PROFILE_ID}); credentials
+ * only for the exact origin {@link AGENT_QA_CREDENTIAL_ORIGIN}; and exactly one
+ * canonical cookie for the staging host —
  * host-only at path `/`. {@link ensureSingleAccessCookie} purges every other
  * `CF_Authorization`, stamps a fresh host-only value, and verifies the jar.
  * Violations throw `env-failure:access-cookie-shadowed` before the first
@@ -33,8 +34,6 @@
  * and nowhere else: no helper returns it and no error message includes it.
  */
 
-import { isAccessHost } from "./allowlist.mjs";
-
 /** Name Cloudflare Access uses for the session cookie. */
 export const ACCESS_COOKIE_NAME = "CF_Authorization";
 
@@ -48,6 +47,15 @@ export const ACCESS_FALLBACK_USER_AGENT =
 
 /** ego lite profile reserved for QA — the built-in one, never `Profile 1`. */
 export const AGENT_QA_EGO_PROFILE_ID = "Default";
+
+/**
+ * The one origin allowed to receive the service-token pair. Exact match on
+ * scheme, host, and port: an Access tenant domain (`*.cloudflareaccess.com`)
+ * or an alternate port is a different origin and fails closed. The broader
+ * `AGENT_QA_ACCESS_HOSTS` rule still governs fetch-level header injection for
+ * Access handshake subresources; it never authorizes credentials.
+ */
+export const AGENT_QA_CREDENTIAL_ORIGIN = "https://staging.cafemood.app";
 
 /**
  * Resolve the dedicated QA profile from `profiles()`. Fail-closed; never falls
@@ -69,24 +77,20 @@ export function resolveAgentQaProfile(profiles) {
 }
 
 /**
- * Validate a staging URL before credentials or cookies touch it: HTTPS and an
- * Access host only.
+ * Validate a staging URL before credentials or cookies touch it: the origin
+ * must equal {@link AGENT_QA_CREDENTIAL_ORIGIN} exactly. `URL.origin` compares
+ * scheme, host, and port, so plaintext (`http:`), an alternate port, and any
+ * other Access tenant domain all fail closed without a request.
  *
  * @param {unknown} stagingUrl absolute staging URL
  * @returns {URL}
  */
 export function parseStagingUrl(stagingUrl) {
   const url = new URL(String(stagingUrl));
-  if (url.protocol !== "https:") {
+  if (url.origin !== AGENT_QA_CREDENTIAL_ORIGIN) {
     throw new Error(
-      `Agent-QA Access bootstrap requires HTTPS; refusing "${url.protocol}" for ${url.hostname} ` +
-        "(the service-token pair must not cross plaintext).",
-    );
-  }
-  if (!isAccessHost(url.hostname)) {
-    throw new Error(
-      `Agent-QA Access bootstrap refused: host "${url.hostname}" is not an Access host; ` +
-        "the service-token pair must never leave the staging allowlist.",
+      `Agent-QA Access bootstrap refused origin "${url.origin}": credentials and Access cookies ` +
+        `are limited to ${AGENT_QA_CREDENTIAL_ORIGIN} (scheme, host, and port must match exactly).`,
     );
   }
   return url;

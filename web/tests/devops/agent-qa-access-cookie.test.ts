@@ -269,30 +269,27 @@ describe("agent-QA Access cookie bootstrap (BRAWUKA-1026)", () => {
       );
     });
 
-    it("refuses to send the pair off the Access allowlist", async () => {
+    it.each([
+      ["http://staging.cafemood.app/api/health", "plaintext"],
+      ["https://staging.cafemood.app:8443/api/health", "an alternate port"],
+      ["https://coffeemode.cloudflareaccess.com/api/health", "an unconfigured Access tenant"],
+      ["https://staging-images.cafemood.app/health", "a sibling staging host"],
+      ["https://cafemood.app/api/health", "the apex host"],
+    ])("refuses %s (%s) before sending the pair", async (url) => {
       let called = false;
       const fetchImpl = (async () => {
         called = true;
         return fakeResponse(200);
       }) as typeof fetch;
 
-      await expect(fetchAccessCookie("https://cafemood.app/api/health", PAIR, { fetchImpl })).rejects.toThrow(
-        /not an Access host/,
-      );
+      await expect(fetchAccessCookie(url, PAIR, { fetchImpl })).rejects.toThrow(/refused origin/);
       expect(called).toBe(false);
     });
 
-    it("refuses plaintext before sending the pair", async () => {
-      let called = false;
-      const fetchImpl = (async () => {
-        called = true;
-        return fakeResponse(200);
-      }) as typeof fetch;
+    it("accepts the exact credential origin", async () => {
+      const fetchImpl = (async () => fakeResponse(200, [`${ACCESS_COOKIE_NAME}=cookie-value; Path=/`])) as typeof fetch;
 
-      await expect(fetchAccessCookie("http://staging.cafemood.app/api/health", PAIR, { fetchImpl })).rejects.toThrow(
-        /requires HTTPS/,
-      );
-      expect(called).toBe(false);
+      await expect(fetchAccessCookie(STAGING_URL, PAIR, { fetchImpl })).resolves.toBe("cookie-value");
     });
   });
 
@@ -333,17 +330,17 @@ describe("agent-QA Access cookie bootstrap (BRAWUKA-1026)", () => {
       expect(stamp?.params).not.toHaveProperty("domain");
     });
 
-    it("refuses plaintext before touching the jar", async () => {
+    it("refuses an off-origin URL before touching the jar", async () => {
       const { page, calls } = fakePage([]);
       const fetchImpl = (async () => fakeResponse(200)) as typeof fetch;
 
       await expect(
         ensureSingleAccessCookie(page, {
-          stagingUrl: "http://staging.cafemood.app/",
+          stagingUrl: "https://staging.cafemood.app:8443/",
           pair: PAIR,
           fetchImpl,
         }),
-      ).rejects.toThrow(/requires HTTPS/);
+      ).rejects.toThrow(/refused origin/);
       expect(calls).toEqual([]);
     });
 

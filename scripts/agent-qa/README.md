@@ -69,7 +69,11 @@ stamped sat unused.
    fallback. This is also what makes step 2 safe: a `.cafemood.app` cookie in
    the personal profile may be Owner's production Access session.
 2. **One canonical cookie, verified.** `ensureSingleAccessCookie(page, {
-   stagingUrl, pair })` accepts HTTPS on an Access host only, deletes every
+   stagingUrl, pair })` accepts only the exact origin
+   `AGENT_QA_CREDENTIAL_ORIGIN` (`https://staging.cafemood.app`: scheme, host,
+   and port must match). An Access tenant domain
+   (`*.cloudflareaccess.com`), an alternate port, or plaintext aborts before
+   any cookie is touched or any request is made. It then deletes every
    `CF_Authorization` that would reach the staging host without being host-only
    at path `/` — parent domains, dotted host domains, and same-name cookies on
    other paths (scoped `Network.deleteCookies`, never a profile-wide clear) —
@@ -93,7 +97,9 @@ Verified on this machine 2026-11-25 against the real Chromium jar in the
 `Default` profile: a stamped `.cafemood.app` decoy is detected and deleted,
 the jar reports every coexisting same-name cookie (including one scoped to
 `/api`), and after `ensureSingleAccessCookie` the jar holds exactly one, domain
-`staging.cafemood.app` at path `/`.
+`staging.cafemood.app` at path `/`. Plaintext, an alternate port, an
+unconfigured Access tenant, and a sibling staging host are each refused with
+zero requests and zero cookie writes.
 
 ## Secret-bridge contract (F8)
 

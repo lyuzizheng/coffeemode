@@ -8,15 +8,15 @@ ledger, allowlist guard, quotas, cleanup.
 
 The product ships gated (`web/config/app.yaml` → `beta.enabled: true`) and the
 staging deployment opens it: the Dokploy application `coffeemode-web-staging`
-carries `BETA_MODE=0` in its environment. A gate-on staging refuses the part of the
-matrix that cannot be admitted — `p0` (anonymous discovery is replaced by the
-beta surface, `/api/cafes` answers 401 before the handler), `p2-search`
+carries `BETA_MODE=0` in its environment. A gate-on staging refuses the part
+of the matrix that cannot be admitted — `p0` (anonymous discovery is replaced
+by the beta surface, `/api/cafes` answers 401 before the handler), `p2-search`
 (anonymous `GET /api/search` answers 401), and `p3-social-like` (a per-run
 second identity has no roster row) — so the flag is what keeps those journeys
 runnable. The `regular`-persona journeys survive a gate-on round only because
 that persona is on the roster.
 
-Two consequences for a round:
+Three consequences for a round:
 
 - The flag is deployment environment, not repo state: it survives redeploys
   because it lives in the Dokploy application env (saved through

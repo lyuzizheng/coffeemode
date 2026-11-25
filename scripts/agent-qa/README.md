@@ -4,6 +4,57 @@ Deterministic, non-LLM harness an agent-QA run uses against staging
 (BRAWUKA-408): Cloudflare Access injection, session bootstrap, personas,
 ledger, allowlist guard, quotas, cleanup.
 
+## Closed-beta gate: staging runs `BETA_MODE=0` (BRAWUKA-1043)
+
+The product ships gated (`web/config/app.yaml` → `beta.enabled: true`) and the
+staging deployment opens it: the Dokploy application `coffeemode-web-staging`
+carries `BETA_MODE=0` in its environment. A gate-on staging refuses the part
+of the matrix that cannot be admitted — `p0` (anonymous discovery is replaced
+by the beta surface, `/api/cafes` answers 401 before the handler), `p2-search`
+(anonymous `GET /api/search` answers 401), and `p3-social-like` (a per-run
+second identity has no roster row) — so the flag is what keeps those journeys
+runnable. The `regular`-persona journeys survive a gate-on round only because
+that persona is on the roster.
+
+Three consequences for a round:
+
+- The flag is deployment environment, not repo state: it survives redeploys
+  because it lives in the Dokploy application env (saved through
+  `application.saveEnvironment`, reloaded into the swarm service). A run that
+  sees the beta surface or a 401 `unauthorized` on an anonymous product route
+  has found `env-failure:beta-gate-on`, not a product defect — stop and report
+  it instead of spending the round.
+- Never re-enable the gate to "check the beta page" during a journey round.
+  The gate's own states are covered by `web/tests/integration/http-beta-gate`
+  and `web/scripts/beta-gate-e2e.mjs` (production build, `BETA_MODE=1`). If an
+  acceptance window does need a gated deployment, gate admission comes from
+  `beta_allowlist` in the staging PostGIS database: the persistent
+  `agent-qa-regular@coffeemode.test` persona is on that roster, and a per-run
+  `agent-qa-fresh-<runId>` identity is not — it needs a row first, and that row
+  must be revoked when the window closes so the roster keeps only live invites:
+
+  ```bash
+  node web/scripts/beta-allowlist.mjs add "agent-qa-fresh-<runId>@coffeemode.test" \
+    --note "agent-QA round <runId>"
+  node web/scripts/beta-allowlist.mjs remove "agent-qa-fresh-<runId>@coffeemode.test"
+  ```
+
+  (`web/scripts/beta-allowlist.mjs` is the CLI; `(cd web && npm run
+  beta:allowlist -- <args>)` is the same entry point.) There is no roster
+  write inside this harness, and none may be added: the roster lives in the
+  application database (ADR-0010 §1), not in Supabase.
+- A gate-on window must close before the nightly round: flip back to `0`,
+  confirm the flipped-back state on the deployment, and drop any per-run roster
+  rows. Nothing serializes the two, so a forgotten flip reproduces
+  `env-failure:beta-gate-on` for the whole anonymous matrix.
+
+The edge ruleset is generated from `beta.enabled`, not from `BETA_MODE`, so a
+`BETA_MODE`-only flip changes neither the ruleset nor its purge obligation
+(`docs/design/beta-gate-v1.md` §9): staging keeps the `/cafes/*` bypass while it
+runs gate-off, responses simply miss shared cache, and the failure the bypass
+prevents — a cached shell outliving the gate — cannot happen. Editing
+`beta.enabled` is the two-step operation, not this flag.
+
 ## Cloudflare Access: per-origin injection (BRAWUKA-508)
 
 `CF-Access-*` is a network-layer identity: it MUST reach only

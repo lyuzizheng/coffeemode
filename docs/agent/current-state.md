@@ -14,7 +14,10 @@ The design-grill program is COMPLETE (2026-08-23): all seven map-independent UI 
   sessions are signed out on the response. Invites are operated with
   `web/scripts/beta-allowlist.mjs`, which also provisions the Supabase Auth user when the
   secret key is configured; the dashboard steps (public signup OFF, per-tester Auth
-  provisioning) are outstanding — `pending-user-actions.md` §1b.
+  provisioning) are outstanding — `pending-user-actions.md` §1b. The staging deployment
+  itself runs with `BETA_MODE=0` (Dokploy app env, BRAWUKA-1043): the nightly QA matrix
+  needs the open product, and the gate's own states are covered by the integration and
+  `test:e2e:beta` suites.
 - Owner credential/account actions remain outstanding; both edge Workers
   (`poi-service`, `image-service`) are deployed to staging and production, so what
   is left there is the POI Google Places key, a Cloudflare deploy API token, and

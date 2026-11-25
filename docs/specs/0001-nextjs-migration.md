@@ -462,8 +462,10 @@ Edge cache: while the gate is on, the generated ruleset
 (deploy/dokploy/cloudflare-cache-rules.json) carries one `/cafes/*` bypass and
 no cache-eligible rule — a cached shell would be a cached bypass of the page
 gate. The generator flips back automatically when `beta.enabled` is false;
-enabling or disabling the gate on a live deployment needs one `/cafes/*` purge
-(docs/design/beta-gate-v1.md §9).
+changing `beta.enabled` on a live deployment needs the regenerated ruleset and
+one `/cafes/*` purge (docs/design/beta-gate-v1.md §9). A `BETA_MODE` flip is
+not that operation — the ruleset is generated from `beta.enabled` and needs
+neither regeneration nor a purge.
 Audit: one `beta.denied` telemetry line per refusal carrying the route, the
 reason (not_allowlisted | no_email | signup_disabled), and email_hash (16 hex chars of
 SHA-256) — never the address and never a token.

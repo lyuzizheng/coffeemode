@@ -218,6 +218,21 @@ export function checkCoverage(contract, payload) {
   const allows = active.filter((rule) => rule.action_parameters?.cache === true);
   const bypasses = active.filter((rule) => rule.action_parameters?.cache === false);
 
+  if (contract.enabled === false) {
+    // Closed beta (BRAWUKA-970): the contract declares no shared cache, so a
+    // cache-eligible rule (or a missing bypass) is the failure — not the
+    // absence of the allow rule.
+    if (allows.length > 0) {
+      failures.push(
+        "closed-beta contract declares no shared cache, but the payload has a cache-eligible rule",
+      );
+    }
+    if (bypasses.length === 0) {
+      failures.push("closed-beta contract needs at least one /cafes/* bypass rule");
+    }
+    return failures;
+  }
+
   if (allows.length === 0) {
     failures.push("payload has no cache-eligible rule");
     return failures;

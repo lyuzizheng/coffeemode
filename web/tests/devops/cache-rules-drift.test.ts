@@ -5,7 +5,9 @@ import {
   renderCacheRulesJson,
   renderCloudflareRulesJson,
 } from "../../scripts/lib/generate-cache-rules";
-import type { CloudflareCacheRuleset } from "@/lib/cache-policy";
+import { cafeShellCdnRules, cafeShellCloudflareRuleset } from "@/lib/cache-policy";
+import type { CloudflareCacheRuleset, ShellCacheInputs } from "@/lib/cache-policy";
+import { loadYaml, parseAppConfig } from "@/lib/config-schema";
 import { evaluateRules } from "../../../scripts/devops/lib/rules-language.mjs";
 import { checkCachePolicy } from "../../../scripts/devops/lib/cache-policy-checks.mjs";
 
@@ -23,19 +25,36 @@ const DEPLOY_DIR = path.resolve(__dirname, "../../../deploy/dokploy");
 const CONTRACT = path.join(DEPLOY_DIR, "cache-rules.json");
 const RULESET = path.join(DEPLOY_DIR, "cloudflare-cache-rules.json");
 
-const payload = JSON.parse(
-  readFileSync(RULESET, "utf8"),
-) as CloudflareCacheRuleset;
-const ruleset = payload.request.rules;
+// The shipped artifacts depend on the closed-beta state (BRAWUKA-970): with
+// `beta.enabled: true` they carry a full /cafes/* bypass, so the shell-cache
+// contract itself is proven against the same policy rendered with the gate
+// off (`open*`). The checked-in bytes are proven separately below.
+const policy = parseAppConfig(loadYaml("app.yaml")).seo.shellCache;
+const shared: ShellCacheInputs = { sharedCache: true };
+const closedBeta: ShellCacheInputs = { sharedCache: false };
 
-/** Effective cache outcome for one request through the real payload. */
-function outcome(req: {
+const deployed = JSON.parse(readFileSync(RULESET, "utf8")) as CloudflareCacheRuleset;
+const deployedContract = JSON.parse(readFileSync(CONTRACT, "utf8")) as {
+  enabled?: boolean;
+  disabledReason?: string;
+};
+const openPayload = cafeShellCloudflareRuleset(policy, shared);
+const openContract = cafeShellCdnRules(policy, shared);
+const ruleset = openPayload.request.rules;
+
+type RequestShape = {
   path: string;
   host: string;
   cookie: string;
   acceptLanguage: string;
-}): "cache" | "bypass" | "uncached" {
-  const { setting } = evaluateRules(ruleset, {
+};
+
+/** Effective cache outcome for one request through a rendered payload. */
+function outcome(
+  req: RequestShape,
+  rules = ruleset,
+): "cache" | "bypass" | "uncached" {
+  const { setting } = evaluateRules(rules, {
     host: req.host,
     path: req.path,
     cookie: req.cookie,
@@ -73,9 +92,11 @@ describe("cafe-shell CDN cache rules", () => {
     expect(outcome(REQ.auth)).toBe("bypass");
     expect(outcome(REQ.staging)).toBe("bypass");
     expect(outcome(REQ.otherPath)).toBe("uncached");
-    expect(
-      JSON.parse(readFileSync(CONTRACT, "utf8")).sharedCacheAcrossLocales,
-    ).toBe(false);
+    if (openContract.enabled) {
+      expect(openContract.sharedCacheAcrossLocales).toBe(false);
+    } else {
+      throw new Error("open rendering must declare the locale contract");
+    }
   });
 
   // BRAWUKA-836: deny-first ordering — the /cafes/* catch-all bypass runs
@@ -121,7 +142,7 @@ describe("cafe-shell CDN cache rules", () => {
   // of contract bypass.onResponseSetCookie. Emitting it keeps the deployed
   // response ruleset reproducible rather than left as unmanaged drift.
   it("pins Set-Cookie /cafes/* responses no-store in the response phase", () => {
-    const payload = JSON.parse(readFileSync(RULESET, "utf8")) as CloudflareCacheRuleset;
+    const payload = openPayload;
     expect(payload.response.phase).toBe("http_response_cache_settings");
     expect(
       payload.response.rules.some(
@@ -135,14 +156,57 @@ describe("cafe-shell CDN cache rules", () => {
   });
 });
 
+// BRAWUKA-970: while the closed beta is on, the shipped artifacts must not
+// carry a cacheable shell at all — a cached /cafes/* page would be a cached
+// bypass of the page gate, and the entry would outlive the gate.
+describe("closed-beta cache contract (BRAWUKA-970)", () => {
+  it("declares no shared cache and renders a single /cafes/* bypass", () => {
+    expect(deployedContract.enabled).toBe(false);
+    expect(deployedContract.disabledReason).toContain("BRAWUKA-970");
+
+    const rules = deployed.request.rules;
+    expect(rules).toHaveLength(1);
+    expect(rules[0].action_parameters.cache).toBe(false);
+    expect(rules[0].expression).toContain('"/cafes/"');
+    expect(deployed.response.rules).toHaveLength(1);
+  expect(deployed.response.rules[0].expression).toContain("set-cookie");
+    expect(checkCachePolicy(deployedContract, deployed).failures).toEqual([]);
+  });
+
+  it("bypasses anonymous default-locale cafe requests, i.e. the gate's audience", () => {
+    for (const req of [REQ.prodEn, REQ.zhCookie, REQ.zhHeader, REQ.auth, REQ.staging]) {
+      expect(outcome(req, deployed.request.rules), JSON.stringify(req)).toBe("bypass");
+    }
+    expect(outcome(REQ.otherPath, deployed.request.rules)).toBe("uncached");
+  });
+
+  it("rejects a payload that re-enables shell caching while the gate is on", () => {
+    const tampered = structuredClone(deployed);
+    const allow = cafeShellCloudflareRuleset(policy, shared).request.rules.at(-1);
+    if (!allow) throw new Error("open rendering must carry the allow rule");
+    tampered.request.rules.push(allow);
+    expect(
+      checkCachePolicy(deployedContract, tampered).failures.some((f: string) =>
+        /declares no shared cache/.test(f),
+      ),
+    ).toBe(true);
+  });
+
+  it("restores the cacheable contract when the gate is off", () => {
+    const open = cafeShellCloudflareRuleset(policy, shared);
+    expect(outcome(REQ.prodEn, open.request.rules)).toBe("cache");
+    expect(outcome(REQ.auth, open.request.rules)).toBe("bypass");
+    expect(cafeShellCdnRules(policy, closedBeta)).toMatchObject({ enabled: false });
+  });
+});
+
 // BRAWUKA-836/841 fault regressions: every crafted payload below defeats a
 // TEXTUAL exclusion check (substring match, case-fold, `or` branch, nested
 // negation) while still caching the protected request — the checker must
 // fail closed on the semantic exclusion contract, not the expression text.
 describe("cache-policy checker adversarial payloads", () => {
-  const contract = JSON.parse(readFileSync(CONTRACT, "utf8"));
-  const fresh = () =>
-    JSON.parse(readFileSync(RULESET, "utf8")) as CloudflareCacheRuleset;
+  const contract = openContract;
+  const fresh = () => structuredClone(openPayload);
   const allowRule = (p: CloudflareCacheRuleset) =>
     p.request.rules.find((r) => r.action_parameters.cache === true)!;
   const probe = (p: CloudflareCacheRuleset, req: (typeof REQ)[keyof typeof REQ]) =>

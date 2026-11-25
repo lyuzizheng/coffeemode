@@ -3,14 +3,17 @@ import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import {
+  COMMITTED_RULES,
   RULES,
   STAGING_HOST,
+  isCacheRule,
   isRulesFile,
   mutatedPayload,
   run,
   scratch,
   setupScratchTree,
   teardownScratchTree,
+  writeContractPair,
 } from "./lib/cache-rules-fixture";
 
 beforeAll(setupScratchTree);
@@ -288,16 +291,33 @@ describe("apply-cache-rules.sh", () => {
     expect(stderr).toContain("unknown argument");
   });
 
-  it("ships a rules file the applier can consume", () => {
-    const parsed: unknown = JSON.parse(
-      fs.readFileSync(path.join(scratch.root, RULES), "utf8"),
-    );
+  it("ships a closed-beta rules file the applier accepts", () => {
+    const parsed: unknown = JSON.parse(fs.readFileSync(COMMITTED_RULES, "utf8"));
     if (!isRulesFile(parsed)) {
       throw new Error("rules file is not a ruleset file with a $note");
     }
     expect(parsed.$note).toContain("BRAWUKA-834");
     expect(parsed.request.phase).toBe("http_request_cache_settings");
-    expect(parsed.request.rules).toHaveLength(4);
+    // BRAWUKA-970: no cache-eligible rule ships while the gate is on, only the
+    // blanket /cafes/* bypass; the response phase still pins Set-Cookie.
+    expect(parsed.request.rules).toHaveLength(1);
+    const rule = parsed.request.rules[0];
+    if (!isCacheRule(rule)) throw new Error("beta rule is not a cache rule");
+    expect(rule.action_parameters.cache).toBe(false);
+    expect(rule.description).toContain("BRAWUKA-970");
+    expect(rule.expression).toContain('"/cafes/"');
     expect(parsed.response?.phase).toBe("http_response_cache_settings");
+    expect(parsed.response?.rules).toHaveLength(1);
+
+    // The applier checks the payload against the contract beside it, so this
+    // exercises the pair exactly as it ships.
+    writeContractPair("beta");
+    try {
+      const { status, stdout } = run(["--dry-run", "--file", COMMITTED_RULES]);
+      expect(status).toBe(0);
+      expect(stdout).toContain("BRAWUKA-970 closed beta");
+    } finally {
+      writeContractPair("open");
+    }
   });
 });

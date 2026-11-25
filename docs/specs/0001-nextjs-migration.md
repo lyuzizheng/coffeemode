@@ -408,6 +408,67 @@ Anonymous sessions (DG76): Supabase anonymous sign-in issues a session on
 No email infra, no magic links.
 ```
 
+### Closed beta — admission gate (BRAWUKA-970)
+
+```text
+Owner decision 2026-10-26: invite-only beta first. No public signup, no
+email/password provider, no Apple yet. Two stores, three server-side locks (ADR-0010 §1: Supabase keeps Auth only;
+the app data — including this roster — lives in the application database):
+1. Supabase project: public sign-up OFF, Google provider ON. With sign-ups
+   closed, no OAuth flow can create an account at all; the operator
+   pre-provisions each invited address in Supabase Auth (`beta-allowlist.mjs
+   add` does it when SUPABASE_SECRET_KEY is configured, otherwise the
+   dashboard's Add user). While the gate is on, Supabase's
+   `error_code=signup_disabled` for an unprovisioned provider attempt is
+   routed to the refusal page (and audited); with `BETA_MODE=0` it stays an
+   ordinary `/?auth=error`, because `/beta` would redirect back to `/` and
+   explain nothing. No SQL hook is installed and none may be: the Auth
+   database is not the application database.
+2. Page gate (lib/beta/page-gate.ts via web/proxy.ts): while the gate is on,
+   every GET/HEAD page outside beta.publicPaths is REWRITTEN to /beta —
+   rewrite, never redirect, because a redirect would drop a magic link's
+   #access_token fragment. A verified but unlisted or revoked session is
+   rewritten to /beta?denied=1 AND its Supabase session cookies are expired on
+   that response (automatic sign-out, no button); a refused session that opens
+   /beta directly is signed out the same way.
+3. API gate (lib/api/guard.ts): every apiRoute asks for admission before the
+   handler. Anonymous → 401 unauthorized; verified but unlisted → 403
+   beta_not_allowed, and that 403 expires the session cookies like the page
+   gate does — an API-first request from a revoked session must not keep the
+   browser signed in. Exempt: /api/health, /api/heartbeat, /api/config, and
+   /api/auth/session (the sign-in tail itself).
+Gate flag: appConfig.beta.enabled is the product state and ships true;
+BETA_MODE overrides one deployment (1/on/true/yes or 0/off/false/no — any
+other value throws at the first request instead of guessing). Public paths
+(web/config/app.yaml): /beta, /about, /privacy, /terms, /robots.txt,
+/sitemap.xml, /~offline, /auth/callback.
+Session tail (lib/auth/sign-in-completion.ts): admission runs before the
+profile upsert. Refused → signOut(), no profiles row, redirect to
+/beta?denied=1 — for both the OAuth code and the magic-link token_hash paths;
+the hash-session bridge turns POST /api/auth/session 403 beta_not_allowed into
+the same destination. An allowed identity proceeds exactly as before.
+Allowlist: beta_allowlist(email text primary key, note, created_at,
+revoked_at). `email` must be lower case and match a minimal address shape
+(CHECK constraints); one live index. Nothing is cached in the app: every
+request re-reads the row, so a revoke refuses the next page request and the
+next API call (BRAWUKA-972 criterion 1). Operated with
+web/scripts/beta-allowlist.mjs (add / list / remove); addresses are never
+stored in this repository — the row's `note` is the tester roster. `add`
+writes the roster row first and then provisions the Supabase Auth account
+(idempotent; `--no-provision` skips it, and a missing secret key prints the
+dashboard step). Provisioning is a precondition for signing in, never a grant:
+the app admits only addresses present and live in `beta_allowlist`.
+Edge cache: while the gate is on, the generated ruleset
+(deploy/dokploy/cloudflare-cache-rules.json) carries one `/cafes/*` bypass and
+no cache-eligible rule — a cached shell would be a cached bypass of the page
+gate. The generator flips back automatically when `beta.enabled` is false;
+enabling or disabling the gate on a live deployment needs one `/cafes/*` purge
+(docs/design/beta-gate-v1.md §9).
+Audit: one `beta.denied` telemetry line per refusal carrying the route, the
+reason (not_allowlisted | no_email | signup_disabled), and email_hash (16 hex chars of
+SHA-256) — never the address and never a token.
+Not in scope: a signup page, invite codes, transactional email, Apple sign-in.
+```
 ### Map — MapLibre GL + OpenFreeMap (revised BRAWUKA-308/311)
 
 ```text

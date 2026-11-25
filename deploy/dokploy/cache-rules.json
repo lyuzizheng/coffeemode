@@ -5,30 +5,6 @@
       "/cafes/*"
     ]
   },
-  "cacheable": {
-    "statuses": [
-      200
-    ],
-    "cacheControl": "public, s-maxage=600, stale-while-revalidate=3600",
-    "staleWhileRevalidateSeconds": 3600
-  },
-  "bypass": {
-    "onResponseSetCookie": true,
-    "onStatusesOtherThan": [
-      200
-    ],
-    "onRequestCookiePrefixes": [
-      "sb-"
-    ],
-    "onRequestCookies": [
-      "locale"
-    ],
-    "onAcceptLanguageContains": [
-      "zh"
-    ],
-    "onHostnames": [
-      "staging.cafemood.app"
-    ]
-  },
-  "sharedCacheAcrossLocales": false
+  "enabled": false,
+  "disabledReason": "BRAWUKA-970 closed beta: /cafes/* is rewritten to /beta for anyone not on beta_allowlist, so no shell may sit in shared cache. Set beta.enabled:false in web/config/app.yaml and run npm run gen:cache-rules when the gate opens."
 }

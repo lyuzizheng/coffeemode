@@ -33,6 +33,17 @@ Status legend: `[ ]` needed, `[~]` partially done, `[x]` done.
 - [ ] Dokploy staging app env still needs the publishable key by hand (2026-09-23, Dokploy MCP unreachable): set `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` to the `sb_publishable_…` value in the Dokploy UI and rebuild (the legacy `NEXT_PUBLIC_SUPABASE_ANON_KEY` name still resolves) — `NEXT_PUBLIC_*` is inlined into the client bundle.
 - [ ] `production` environment: owner (`lyuzizheng`) is the required reviewer (already set); prod secrets land there only at promotion time, never before.
 
+## 1b. Closed beta gate (BRAWUKA-970) — unlocks the invited-only launch
+
+- [ ] Supabase project (production, then staging) → Authentication → **Providers → Email: turn OFF "Allow new users to sign up"**. Google stays enabled; there is no public registration path in the app either (no signup page, no password provider). With sign-ups closed, a Google sign-in cannot create an account — the operator provisions each invited address first (next item).
+- [ ] **No SQL hook.** ADR-0010 keeps Supabase Auth in its own database, so a `before-user-created` SQL hook installed by the app's migrations could not be configured and must not be. Admission is enforced by the app (roster + guards) and by the sign-up switch above.
+- [ ] Invite **and provision** testers from a shell that has the deployment's `DATABASE_URL`, `SUPABASE_URL`, and `SUPABASE_SECRET_KEY` (never commit addresses; the row's `note` is the roster):
+  - `node scripts/beta-allowlist.mjs add someone@example.com --note "invited by <who>, <why>"` — writes the roster row, then provisions the Supabase Auth user (prints `provisioned` or `already provisioned`). Without the secret key it prints the dashboard step instead: Authentication → Users → **Add user** with that email before the first sign-in.
+  - `node scripts/beta-allowlist.mjs list` (roster) · `node scripts/beta-allowlist.mjs remove someone@example.com` (revoke; history kept; the next request is refused even though the Auth account still exists)
+- [ ] Leave `BETA_MODE` unset in production: the build ships gated (`beta.enabled: true` in `web/config/app.yaml`). Only staging previews set `BETA_MODE=0`.
+- [ ] Apply the generated edge ruleset and purge once: `deploy/dokploy/cloudflare-cache-rules.json` now carries a single `/cafes/*` bypass (BRAWUKA-970) — run `scripts/devops/apply-cache-rules.sh --apply` with Cloudflare credentials (BRAWUKA-967's access path), then purge the zone's `/cafes/*` URLs once so entries cached under the old policy cannot outlive the switch. Record the applied ruleset's rule ID/description in the deploy log.
+- [ ] Real-account acceptance (release gate, BRAWUKA-972 criterion 5): provide **one allowlisted** and **one non-allowlisted** Google address plus an interactive login window. Then follow `docs/design/beta-gate-v1.md` §9 "Real-account acceptance": three screenshots + the Supabase Users page. The non-allowlisted attempt should leave no new Auth user (sign-ups closed); delete any account created during an earlier open-signup period by hand.
+
 ## 2. Postgres (primary database — Supabase, per 0004 decision 34a, owner 2026-08-28)
 
 - [x] Create the Supabase project (free tier) in the region closest to the VPS (CafeMood project `rsdzcegylqgccaneomph` active in `ap-southeast-1`)

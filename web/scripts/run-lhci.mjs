@@ -89,6 +89,11 @@ async function runLhci() {
       stdio: "ignore",
       env: {
         DATABASE_URL: dbUrl,
+        // Closed beta (BRAWUKA-970): the released build gates `/`, so the
+        // staging build this job audits must open the gate — otherwise every
+        // budget and a11y assertion would measure the beta page instead of the
+        // product.
+        BETA_MODE: "0",
       },
     });
   }

@@ -1,5 +1,7 @@
 import { apiError } from "@/lib/api/response";
 import { completeSignIn } from "@/lib/auth/sign-in-completion";
+import { recordBetaDenied } from "@/lib/beta/access";
+import { isBetaEnabled } from "@/lib/beta/config";
 import { logError } from "@/lib/observability/server-log";
 import { createSupabaseServerClient } from "@/lib/auth/supabase-server";
 import { isSafeReturnPath } from "@/lib/auth/safe-path";
@@ -15,6 +17,47 @@ export const runtime = "nodejs";
  */
 const OTP_TYPES = ["magiclink", "email", "signup", "recovery", "invite", "email_change"] as const;
 type OtpType = (typeof OTP_TYPES)[number];
+
+/**
+ * Refusal destination (BRAWUKA-970): a non-allowlisted identity is signed out
+ * and lands on the beta surface with the refusal copy — never on the generic
+ * auth-error banner, which would invite a retry that cannot succeed.
+ */
+const BETA_DENIED_PATH = "/beta?denied=1";
+
+/**
+ * Supabase reports a provider sign-in that would have created an account while
+ * sign-ups are disabled as `error_code=signup_disabled` (ADR-0010 §1: Auth has
+ * its own user store, so the app-side roster cannot answer this itself). That
+ * is the closed beta doing its job for an unprovisioned address, not an auth
+ * outage: it gets the refusal page. Every other provider error keeps the
+ * generic path.
+ */
+const PROVIDER_SIGNUP_DISABLED = "signup_disabled";
+
+/**
+ * True only while the gate is on: with `BETA_MODE=0` the refusal page redirects
+ * straight back to `/`, so routing a provider refusal there would show the user
+ * nothing at all. Closed sign-ups without the beta are an ordinary auth error.
+ */
+function isProviderRefusal(searchParams: URLSearchParams): boolean {
+  return isBetaEnabled() && searchParams.get("error_code") === PROVIDER_SIGNUP_DISABLED;
+}
+
+/** Audit + destination for a provider-side refusal (no identity is available). */
+function providerRefusalRedirect(request: Request): Response {
+  recordBetaDenied({
+    email: null,
+    reason: "signup_disabled",
+    route: "GET /auth/callback provider",
+  });
+  return redirectToPath(request, BETA_DENIED_PATH);
+}
+
+/** True when an auth-js failure is Supabase refusing to create an account. */
+function isSignupDisabledError(error: { code?: string } | null): boolean {
+  return error?.code === PROVIDER_SIGNUP_DISABLED;
+}
 
 function isOtpType(value: string): value is OtpType {
   return (OTP_TYPES as readonly string[]).includes(value);
@@ -38,11 +81,16 @@ export async function GET(request: Request) {
   }
 
   if (!searchParams.get("code")) {
+    // Supabase refused to create an account for this provider identity: the
+    // closed beta answered before the app saw a session (BRAWUKA-970).
+    if (isProviderRefusal(searchParams)) {
+      return providerRefusalRedirect(request);
+    }
     // Nothing to exchange. A browser navigation can still carry the session in
     // the URL hash (Supabase's verify endpoint 303s there for non-PKCE links);
     // the home page's HashSessionBridge consumes it, so send the browser to `/`
-    // rather than failing a login that is about to succeed. A provider-reported
-    // error is the one case that gets the error banner.
+    // rather than failing a login that is about to succeed. Any other
+    // provider-reported error gets the error banner.
     return redirectToPath(request, searchParams.has("error") ? "/?auth=error" : "/");
   }
 
@@ -68,6 +116,14 @@ async function magicLinkCallback(request: Request, searchParams: URLSearchParams
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase.auth.verifyOtp({ token_hash: tokenHash, type });
   if (error || !data.user) {
+    // An address that was never provisioned in Supabase Auth and has no live
+    // invitation is a beta refusal, not a broken link: send it to the refusal
+    // page so the copy explains what to do (BRAWUKA-970). With the gate off,
+    // sign-ups closed is an ordinary auth error — the refusal page would bounce
+    // the browser to `/` and explain nothing.
+    if (isBetaEnabled() && isSignupDisabledError(error)) {
+      return providerRefusalRedirect(request);
+    }
     // Never swallow: an expired or replayed link is a real login failure and
     // belongs in the log next to the redirect the user sees.
     logError({
@@ -84,7 +140,10 @@ async function magicLinkCallback(request: Request, searchParams: URLSearchParams
     user: data.user,
     route: "GET /auth/callback",
   });
-  if (!completed) {
+  if (completed === "beta_denied") {
+    return redirectToPath(request, BETA_DENIED_PATH);
+  }
+  if (completed !== "ok") {
     return redirectToPath(request, "/?auth=error&reason=profile_upsert");
   }
 
@@ -102,6 +161,9 @@ async function oauthCallback(request: Request, searchParams: URLSearchParams) {
   );
 
   if (error || !data.user) {
+    if (isBetaEnabled() && isSignupDisabledError(error)) {
+      return providerRefusalRedirect(request);
+    }
     return redirectToPath(request, "/?auth=error");
   }
 
@@ -111,7 +173,10 @@ async function oauthCallback(request: Request, searchParams: URLSearchParams) {
     user: data.user,
     route: "GET /auth/callback",
   });
-  if (!completed) {
+  if (completed === "beta_denied") {
+    return redirectToPath(request, BETA_DENIED_PATH);
+  }
+  if (completed !== "ok") {
     return redirectToPath(request, "/?auth=error&reason=profile_upsert");
   }
 

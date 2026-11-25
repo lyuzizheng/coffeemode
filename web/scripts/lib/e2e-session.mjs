@@ -19,15 +19,17 @@ export function supabaseCookieName(supabaseUrl) {
 
 /**
  * Mint a session at the supabase-mock and return the @supabase/ssr cookie
- * pair. Returns null when the mock is unreachable — the caller degrades to
- * a skip instead of failing the whole suite.
+ * pair. `email` rides the mock's JWT and is what `/auth/v1/user` echoes back,
+ * so the closed-beta gate can mint one admitted and one refused identity.
+ * Returns null when the mock is unreachable — the caller degrades to a skip
+ * instead of failing the whole suite.
  */
-export async function mintSession(supabaseUrl, userId) {
+export async function mintSession(supabaseUrl, userId, email = "e2e@coffeemode.test") {
   try {
     const res = await fetch(`${supabaseUrl}/auth/v1/token`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ email: "e2e@coffeemode.test", userId }),
+      body: JSON.stringify({ email, userId }),
     });
     if (!res.ok) return null;
     const data = await res.json();

@@ -50,6 +50,59 @@ cookie-only path never stalled). Fail-closed throughout:
 unparsable/off-Access-scope URLs never receive headers, and a
 paused request is always continued (never left hanging).
 
+## Dedicated profile + one host-only cookie (BRAWUKA-1026)
+
+The 2026-11-20 scheduled round died at the Access login page with
+`env-failure:access-cookie-shadowed`. Cause: the QA browser ran on Owner's
+personal ego profile, whose jar is shared with Owner's tabs and every other
+space on it. A session `CF_Authorization` scoped to `.cafemood.app` came along;
+Cloudflare sends one same-name cookie, the parent-domain one won, and every
+Document navigation answered 302 while the host-only cookie the runner had
+stamped sat unused.
+
+`access-cookie.mjs` makes the failure unrepresentable in two moves:
+
+1. **Dedicated profile.** Create the QA space with
+   `taskSpace(name, { profileId: resolveAgentQaProfile(await profiles()).id })`
+   — ego lite's built-in `Default` profile, never Owner's imported `Profile 1`.
+   A missing profile aborts as `env-failure:qa-profile-missing`; there is no
+   fallback. This is also what makes step 2 safe: a `.cafemood.app` cookie in
+   the personal profile may be Owner's production Access session.
+2. **One canonical cookie, verified.** `ensureSingleAccessCookie(page, {
+   stagingUrl, pair })` accepts only the exact origin
+   `AGENT_QA_CREDENTIAL_ORIGIN` (`https://staging.cafemood.app`: scheme, host,
+   and port must match) and the URL's own protocol must be `https:` — a
+   `blob:` URL serializes the inner origin, so it is refused before any cookie
+   or request. An Access tenant domain (`*.cloudflareaccess.com`), an
+   alternate port, or plaintext aborts the same way. It then deletes every
+   `CF_Authorization` that would reach the staging host without being host-only
+   at path `/` — parent domains, dotted host domains, and same-name cookies on
+   other paths (scoped `Network.deleteCookies`, never a profile-wide clear) —
+   trades the token pair for a fresh value with a direct Node fetch, stamps it
+   with `Network.setCookie({ url })` — no `domain`, which is what keeps it
+   host-only — then reads the whole jar back and asserts exactly one canonical
+   cookie. Matching follows RFC 6265 §5.4: a bare domain is host-only and
+   matches only its exact host, so a host-only cookie on `cafemood.app` is
+   never touched. Any violation throws the
+   `env-failure:access-cookie-shadowed` signature instead of spending a journey
+   round on the login page. The token-pair fetch keeps the probe's own client
+   identity (no user-agent override) and never impersonates a browser. A bot
+   challenge — HTTP 403/429/503 or any `cf-mitigated` header — stops the round
+   with `env-failure:access-probe-blocked`; the runner records the blocked
+   access and ends the round instead of retrying or spoofing.
+
+`verifySingleAccessCookie(page, stagingUrl)` re-checks the invariant on its own
+and is cheap enough to call before each journey; the bootstrap returns only
+the purged domains, never a value or token.
+
+Verified on this machine 2026-11-25 against the real Chromium jar in the
+`Default` profile: a stamped `.cafemood.app` decoy is detected and deleted,
+the jar reports every coexisting same-name cookie (including one scoped to
+`/api`), and after `ensureSingleAccessCookie` the jar holds exactly one, domain
+`staging.cafemood.app` at path `/`. Plaintext, an alternate port, an
+unconfigured Access tenant, and a sibling staging host are each refused with
+zero requests and zero cookie writes.
+
 ## Secret-bridge contract (F8)
 
 The ego-browser Node process does NOT inherit the agent's env, so

@@ -43,7 +43,7 @@ const SUPABASE_KEYS = Object.freeze({
 /** Precondition: Cloudflare Access service token present in the runner env. */
 const ACCESS_TOKEN = Object.freeze({
   name: "access-token",
-  check: "CF_ACCESS_CLIENT_ID + CF_ACCESS_CLIENT_SECRET present; /api/health probes 200 with a real browser UA",
+  check: "CF_ACCESS_CLIENT_ID + CF_ACCESS_CLIENT_SECRET present; /api/health probes 200 with the probe's own client identity (no browser-UA spoof; 403/429/503 or cf-mitigated = env-failure:access-probe-blocked)",
 });
 
 const GOOGLE_PLACES_KEY = Object.freeze({

@@ -85,10 +85,11 @@ stamped sat unused.
    matches only its exact host, so a host-only cookie on `cafemood.app` is
    never touched. Any violation throws the
    `env-failure:access-cookie-shadowed` signature instead of spending a journey
-   round on the login page. The token-pair fetch presents the live Chromium
-   user agent (constant fallback): the staging bot layer challenges a
-   non-browser UA, and the 2026-11-20 evidence proves the cookie is issued to a
-   browser-shaped request.
+   round on the login page. The token-pair fetch keeps the probe's own client
+   identity (no user-agent override) and never impersonates a browser. A bot
+   challenge — HTTP 403/429/503 or any `cf-mitigated` header — stops the round
+   with `env-failure:access-probe-blocked`; the runner records the blocked
+   access and ends the round instead of retrying or spoofing.
 
 `verifySingleAccessCookie(page, stagingUrl)` re-checks the invariant on its own
 and is cheap enough to call before each journey; the bootstrap returns only

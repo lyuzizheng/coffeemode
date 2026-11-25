@@ -37,14 +37,6 @@
 /** Name Cloudflare Access uses for the session cookie. */
 export const ACCESS_COOKIE_NAME = "CF_Authorization";
 
-/**
- * Fallback user agent for the token-pair fetch: staging's bot layer challenges
- * a non-browser UA, and the 2026-11-20 evidence issued the cookie to a
- * browser-shaped request. The live Chromium UA is preferred.
- */
-export const ACCESS_FALLBACK_USER_AGENT =
-  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36";
-
 /** ego lite profile reserved for QA — the built-in one, never `Profile 1`. */
 export const AGENT_QA_EGO_PROFILE_ID = "Default";
 
@@ -214,15 +206,21 @@ export function readAccessCookieValue(headers, name = ACCESS_COOKIE_NAME) {
  * away from third-party origins. Redirects are NOT followed: a 3xx means the
  * Access application rejected the token and the run must stop.
  *
+ * The probe presents its own client identity (the fetch implementation's
+ * default user agent) and never impersonates a browser to pass the staging bot
+ * layer. A challenge response stops the round with
+ * `env-failure:access-probe-blocked`; the caller records the blocked access and
+ * ends the round.
+ *
  * @param {string} stagingUrl Access-protected HTTPS staging URL
  * @param {{ clientId: string, clientSecret: string }} pair resolved token pair
- * @param {{ fetchImpl?: typeof fetch, timeoutMs?: number, userAgent?: string }} [opts]
+ * @param {{ fetchImpl?: typeof fetch, timeoutMs?: number }} [opts]
  * @returns {Promise<string>} the cookie value (header-only; never logged)
  */
 export async function fetchAccessCookie(
   stagingUrl,
   pair,
-  { fetchImpl = globalThis.fetch, timeoutMs = 10_000, userAgent = ACCESS_FALLBACK_USER_AGENT } = {},
+  { fetchImpl = globalThis.fetch, timeoutMs = 10_000 } = {},
 ) {
   const url = parseStagingUrl(stagingUrl);
   const res = await fetchImpl(url.href, {
@@ -231,10 +229,17 @@ export async function fetchAccessCookie(
     headers: {
       "CF-Access-Client-Id": pair.clientId,
       "CF-Access-Client-Secret": pair.clientSecret,
-      "user-agent": userAgent,
     },
     signal: AbortSignal.timeout(timeoutMs),
   });
+  const mitigated = res.headers.get("cf-mitigated");
+  if ((res.status === 403 || res.status === 429 || res.status === 503) || mitigated !== null) {
+    throw new Error(
+      `Agent-QA Access probe blocked by a staging bot challenge ` +
+        `(HTTP ${res.status}${mitigated === null ? "" : `, cf-mitigated: ${mitigated}`}) from ${url.pathname}; ` +
+        "ending the round instead of impersonating a browser (env-failure:access-probe-blocked).",
+    );
+  }
   if (res.status < 200 || res.status >= 300) {
     throw new Error(
       `Agent-QA Access cookie bootstrap got HTTP ${res.status} from ${url.pathname} ` +
@@ -325,21 +330,17 @@ export async function verifySingleAccessCookie(page, stagingUrl) {
 /**
  * Full bootstrap: purge shadows → fetch with the token pair → stamp host-only →
  * verify. Call once per round, before the first `goto()`. The fetch presents
- * the live Chromium UA so the bot layer sees the browser's identity.
+ * the probe's own client identity; a bot challenge throws
+ * `env-failure:access-probe-blocked` and ends the round.
  *
- * @param {{ cdp: (method: string, params?: unknown) => Promise<unknown>, evaluate?: (fn: () => unknown) => Promise<unknown> }} page ego-browser Page
+ * @param {{ cdp: (method: string, params?: unknown) => Promise<unknown> }} page ego-browser Page
  * @param {{ stagingUrl: string, pair: { clientId: string, clientSecret: string }, fetchImpl?: typeof fetch }} opts
  * @returns {Promise<{ purgedDomains: string[] }>}
  */
 export async function ensureSingleAccessCookie(page, { stagingUrl, pair, fetchImpl }) {
   const url = parseStagingUrl(stagingUrl);
   const purgedDomains = await purgeShadowingAccessCookies(page, url.hostname);
-  const browserUa = await Promise.resolve()
-    .then(() => page.evaluate?.(() => navigator.userAgent))
-    .catch(() => "");
-  const userAgent =
-    typeof browserUa === "string" && browserUa.startsWith("Mozilla/") ? browserUa : ACCESS_FALLBACK_USER_AGENT;
-  const value = await fetchAccessCookie(stagingUrl, pair, { fetchImpl, userAgent });
+  const value = await fetchAccessCookie(stagingUrl, pair, { fetchImpl });
   await stampHostOnlyAccessCookie(page, stagingUrl, value);
   await verifySingleAccessCookie(page, stagingUrl);
   return { purgedDomains };

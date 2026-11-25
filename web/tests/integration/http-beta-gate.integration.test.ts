@@ -333,6 +333,35 @@ describeBoundary("boundary — closed-beta admission (BRAWUKA-970)", () => {
       expect(api.status).toBe(403);
       expect(deniedLines().length).toBe(2);
     });
+
+    it("expires the refused session when the API call is the first request after the revoke", async () => {
+      // API-first (BRAWUKA-970): a revoked session that never loads a page
+      // reaches the API gate directly, so that 403 must end the session too —
+      // the browser must not keep presenting a cookie the app rejected.
+      const email = "revoked-api-first@example.com";
+      const id = "e2e00000-0000-4000-a000-00000000b0a5";
+      await dbClient.query(
+        `insert into beta_allowlist (email, note, revoked_at) values ($1, 'api-first probe', null)
+         on conflict (email) do update set revoked_at = null`,
+        [email],
+      );
+      const cookie = sessionCookie(id, email);
+      sessionJar.set(COOKIE_NAME, cookie.split("=")[1]);
+      expect((await cafesGET(apiRequest("/api/cafes?lat=1.35&lng=103.8", cookie))).status).toBe(200);
+
+      await dbClient.query("update beta_allowlist set revoked_at = now() where email = $1", [email]);
+
+      const api = await cafesGET(apiRequest("/api/cafes?lat=1.35&lng=103.8", cookie));
+      expect(api.status).toBe(403);
+      expect((await api.json()).error).toBe("beta_not_allowed");
+      expect(clearedSessionCookies(api)).not.toEqual([]);
+
+      // The browser applies that expiry before its next call: with the jar
+      // empty the same request is anonymous, not refused.
+      sessionJar.clear();
+      const next = await cafesGET(apiRequest("/api/cafes?lat=1.35&lng=103.8"));
+      expect(next.status).toBe(401);
+    });
   });
 
   describe("API gate (guard)", () => {

@@ -216,7 +216,7 @@ in `http-beta-gate.integration.test.ts` / `beta-gate-e2e.mjs`):
 | Who | Page | API |
 |---|---|---|
 | anonymous | `/beta` (invitation) | 401 `unauthorized` |
-| signed in, not on the list | `/beta?denied=1` (refusal; the page response expires the session cookies) | 403 `beta_not_allowed` |
+| signed in, not on the list | `/beta?denied=1` (refusal; the page response expires the session cookies) | 403 `beta_not_allowed` (that response expires them too) |
 | signed in, allowlisted | the product | normal envelope |
-| revoked mid-session | `/beta?denied=1` on the next page request (session cookies expired there) | 403 `beta_not_allowed` |
-| Google identity Supabase never provisioned | `/beta?denied=1` with no account created | n/a (no session) |
+| revoked mid-session | `/beta?denied=1` on the next page request (session cookies expired there) | 403 `beta_not_allowed`, cookies expired — also when the API call is the first request of the visit |
+| Google identity Supabase never provisioned | `/beta?denied=1` with no account created (gate on); `/?auth=error` when `BETA_MODE=0` | n/a (no session) |

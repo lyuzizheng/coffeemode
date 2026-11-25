@@ -418,10 +418,12 @@ the app data — including this roster — lives in the application database):
    closed, no OAuth flow can create an account at all; the operator
    pre-provisions each invited address in Supabase Auth (`beta-allowlist.mjs
    add` does it when SUPABASE_SECRET_KEY is configured, otherwise the
-   dashboard's Add user). Supabase answers an unprovisioned provider attempt
-   with `error_code=signup_disabled`, which the app routes to the refusal
-   page. No SQL hook is installed and none may be: the Auth database is not
-   the application database.
+   dashboard's Add user). While the gate is on, Supabase's
+   `error_code=signup_disabled` for an unprovisioned provider attempt is
+   routed to the refusal page (and audited); with `BETA_MODE=0` it stays an
+   ordinary `/?auth=error`, because `/beta` would redirect back to `/` and
+   explain nothing. No SQL hook is installed and none may be: the Auth
+   database is not the application database.
 2. Page gate (lib/beta/page-gate.ts via web/proxy.ts): while the gate is on,
    every GET/HEAD page outside beta.publicPaths is REWRITTEN to /beta —
    rewrite, never redirect, because a redirect would drop a magic link's
@@ -431,7 +433,9 @@ the app data — including this roster — lives in the application database):
    /beta directly is signed out the same way.
 3. API gate (lib/api/guard.ts): every apiRoute asks for admission before the
    handler. Anonymous → 401 unauthorized; verified but unlisted → 403
-   beta_not_allowed. Exempt: /api/health, /api/heartbeat, /api/config, and
+   beta_not_allowed, and that 403 expires the session cookies like the page
+   gate does — an API-first request from a revoked session must not keep the
+   browser signed in. Exempt: /api/health, /api/heartbeat, /api/config, and
    /api/auth/session (the sign-in tail itself).
 Gate flag: appConfig.beta.enabled is the product state and ships true;
 BETA_MODE overrides one deployment (1/on/true/yes or 0/off/false/no — any

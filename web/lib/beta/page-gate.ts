@@ -4,6 +4,7 @@ import type { SessionUser } from "@/lib/auth/get-user";
 import { getRequestId } from "@/lib/observability/server-log";
 import { betaDecisionFor, recordBetaDenied } from "./access";
 import { isBetaEnabled, isBetaPublicPath } from "./config";
+import { expireSessionCookies } from "./session-cookies";
 
 /**
  * Page-side closed-beta gate (BRAWUKA-970, spec 0001 §Closed beta).
@@ -62,30 +63,6 @@ export function betaGateScope(request: NextRequest): BetaGateScope {
 }
 
 /**
- * Session cookies as `@supabase/ssr` names them: the bare/chunked auth-token
- * pair, plus the legacy hand-set names. Opaque `sb-*-auth-token` values are
- * chunked above ~3.2 KiB, so every `.<n>` chunk must be expired too.
- */
-const SESSION_COOKIE = /^(?:sb-.+-(?:auth|refresh)-token(?:\.\d+)?|sb-(?:access|refresh)-token)$/;
-
-/**
- * Expire this browser's session cookies on the outgoing response.
- *
- * A refused identity must not keep a session the app has already rejected
- * (BRAWUKA-970): the response signs it out instead of asking the visitor to
- * press a button. Next applies these writes to the request's cookie jar for
- * the render that follows, so the refusal surface renders anonymous — by
- * design, an account the gate rejected is never named back to the browser.
- */
-export function clearSessionCookies(request: NextRequest, response: NextResponse): void {
-  for (const { name } of request.cookies.getAll()) {
-    if (SESSION_COOKIE.test(name)) {
-      response.cookies.set(name, "", { path: "/", maxAge: 0 });
-    }
-  }
-}
-
-/**
  * The gate's answer: `null` admits the request (the proxy continues); any
  * response is the beta surface rendered in place of the requested page.
  */
@@ -118,7 +95,7 @@ export async function betaPageGate(
     input.scope === "rewrite" ? betaRewrite(request, true, input.carry) : input.carry;
   // Automatic sign-out (BRAWUKA-970): the refused session ends with this
   // response — no manual sign-out button is required to leave the account.
-  clearSessionCookies(request, response);
+  expireSessionCookies(request, response);
   return response;
 }
 

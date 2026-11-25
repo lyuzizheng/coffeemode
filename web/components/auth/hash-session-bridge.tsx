@@ -19,7 +19,7 @@ const SESSION_ENDPOINT = "/api/auth/session";
  * The fragment is stripped before the request starts: tokens must not survive
  * in the address bar, session history, or any later `Referer`.
  */
-export function HashSessionBridge() {
+export function HashSessionBridge({ betaEnabled }: { betaEnabled: boolean }) {
   const router = useRouter();
 
   useEffect(() => {
@@ -38,9 +38,11 @@ export function HashSessionBridge() {
     if (params.get("error")) {
       // Supabase refuses to create an account for an unprovisioned address
       // while sign-ups are closed (BRAWUKA-970): that is the beta answering,
-      // not an auth failure — the refusal page explains it.
+      // not an auth failure — the refusal page explains it. Only while the
+      // gate is on: with `BETA_MODE=0` `/beta` redirects straight to `/`, so
+      // the refusal route would show the user nothing.
       const refused = params.get("error_code") === "signup_disabled";
-      router.replace(refused ? "/beta?denied=1" : "/?auth=error");
+      router.replace(betaEnabled && refused ? "/beta?denied=1" : "/?auth=error");
       return;
     }
 

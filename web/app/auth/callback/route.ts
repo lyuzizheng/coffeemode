@@ -1,6 +1,7 @@
 import { apiError } from "@/lib/api/response";
 import { completeSignIn } from "@/lib/auth/sign-in-completion";
 import { recordBetaDenied } from "@/lib/beta/access";
+import { isBetaEnabled } from "@/lib/beta/config";
 import { logError } from "@/lib/observability/server-log";
 import { createSupabaseServerClient } from "@/lib/auth/supabase-server";
 import { isSafeReturnPath } from "@/lib/auth/safe-path";
@@ -34,8 +35,13 @@ const BETA_DENIED_PATH = "/beta?denied=1";
  */
 const PROVIDER_SIGNUP_DISABLED = "signup_disabled";
 
+/**
+ * True only while the gate is on: with `BETA_MODE=0` the refusal page redirects
+ * straight back to `/`, so routing a provider refusal there would show the user
+ * nothing at all. Closed sign-ups without the beta are an ordinary auth error.
+ */
 function isProviderRefusal(searchParams: URLSearchParams): boolean {
-  return searchParams.get("error_code") === PROVIDER_SIGNUP_DISABLED;
+  return isBetaEnabled() && searchParams.get("error_code") === PROVIDER_SIGNUP_DISABLED;
 }
 
 /** Audit + destination for a provider-side refusal (no identity is available). */
@@ -112,8 +118,10 @@ async function magicLinkCallback(request: Request, searchParams: URLSearchParams
   if (error || !data.user) {
     // An address that was never provisioned in Supabase Auth and has no live
     // invitation is a beta refusal, not a broken link: send it to the refusal
-    // page so the copy explains what to do (BRAWUKA-970).
-    if (isSignupDisabledError(error)) {
+    // page so the copy explains what to do (BRAWUKA-970). With the gate off,
+    // sign-ups closed is an ordinary auth error — the refusal page would bounce
+    // the browser to `/` and explain nothing.
+    if (isBetaEnabled() && isSignupDisabledError(error)) {
       return providerRefusalRedirect(request);
     }
     // Never swallow: an expired or replayed link is a real login failure and
@@ -153,7 +161,7 @@ async function oauthCallback(request: Request, searchParams: URLSearchParams) {
   );
 
   if (error || !data.user) {
-    if (isSignupDisabledError(error)) {
+    if (isBetaEnabled() && isSignupDisabledError(error)) {
       return providerRefusalRedirect(request);
     }
     return redirectToPath(request, "/?auth=error");

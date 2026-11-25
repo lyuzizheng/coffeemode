@@ -41,7 +41,7 @@ describe("HashSessionBridge", () => {
     fetchMock.mockResolvedValue({ ok: true });
     landOn("/#access_token=token-abc&refresh_token=refresh-abc");
 
-    render(<HashSessionBridge />);
+    render(<HashSessionBridge betaEnabled />);
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     const [url, init] = fetchMock.mock.calls[0];
@@ -58,7 +58,7 @@ describe("HashSessionBridge", () => {
   });
 
   it("does nothing when the landing URL carries no access token", async () => {
-    render(<HashSessionBridge />);
+    render(<HashSessionBridge betaEnabled />);
     await Promise.resolve();
 
     expect(fetchMock).not.toHaveBeenCalled();
@@ -69,7 +69,7 @@ describe("HashSessionBridge", () => {
   it("clears a half-session fragment and reports the error without calling the server", async () => {
     landOn("/#access_token=token-abc");
 
-    render(<HashSessionBridge />);
+    render(<HashSessionBridge betaEnabled />);
 
     await waitFor(() => expect(mockReplace).toHaveBeenCalledWith("/?auth=error"));
     expect(fetchMock).not.toHaveBeenCalled();
@@ -80,7 +80,7 @@ describe("HashSessionBridge", () => {
     fetchMock.mockResolvedValue({ ok: false });
     landOn("/#access_token=token-abc&refresh_token=refresh-abc");
 
-    render(<HashSessionBridge />);
+    render(<HashSessionBridge betaEnabled />);
 
     await waitFor(() => expect(mockReplace).toHaveBeenCalledWith("/?auth=error"));
     expect(mockRefresh).not.toHaveBeenCalled();
@@ -89,10 +89,28 @@ describe("HashSessionBridge", () => {
   it("surfaces a provider error fragment as the auth error", async () => {
     landOn("/#error=access_denied&error_description=Email+link+is+invalid+or+has+expired");
 
-    render(<HashSessionBridge />);
+    render(<HashSessionBridge betaEnabled />);
 
     await waitFor(() => expect(mockReplace).toHaveBeenCalledWith("/?auth=error"));
     expect(fetchMock).not.toHaveBeenCalled();
     expect(window.location.hash).toBe("");
+  });
+
+  it("routes a closed-signup refusal to the beta page while the gate is on", async () => {
+    landOn("/#error=access_denied&error_code=signup_disabled");
+
+    render(<HashSessionBridge betaEnabled />);
+
+    await waitFor(() => expect(mockReplace).toHaveBeenCalledWith("/beta?denied=1"));
+  });
+
+  it("keeps a closed-signup refusal on the auth error when the gate is off", async () => {
+    // With `BETA_MODE=0` `/beta` redirects to `/`: the refusal route would
+    // explain nothing, so the generic banner is the honest destination.
+    landOn("/#error=access_denied&error_code=signup_disabled");
+
+    render(<HashSessionBridge betaEnabled={false} />);
+
+    await waitFor(() => expect(mockReplace).toHaveBeenCalledWith("/?auth=error"));
   });
 });

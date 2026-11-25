@@ -7,6 +7,7 @@ import { RuntimeBanner } from "@/components/runtime-banner";
 import { CheckinResume } from "@/components/checkin/checkin-resume";
 import { HashSessionBridge } from "@/components/auth/hash-session-bridge";
 import { appConfig } from "@/lib/config";
+import { isBetaEnabled } from "@/lib/beta/config";
 import "./globals.css";
 import { APP_DESCRIPTION, APP_NAME, THEME_COLOR } from "@/lib/site";
 import { VARIANT_BOOTSTRAP } from "@/lib/theme-variant-const";
@@ -120,7 +121,7 @@ export default async function RootLayout({
           <OfflineBanner />
           <RuntimeBanner />
           {children}
-          <HashSessionBridge />
+          <HashSessionBridge betaEnabled={isBetaEnabled()} />
           <CheckinResume draftTtlHours={appConfig.checkins.pendingDraftTtlHours} />
         </Providers>
       </body>

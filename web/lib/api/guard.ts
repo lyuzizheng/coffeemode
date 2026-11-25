@@ -11,6 +11,7 @@ import { rateLimitBuckets, rateLimits } from "@/lib/config";
 import { apiError } from "@/lib/api/response";
 import { betaDecisionFor, recordBetaDenied } from "@/lib/beta/access";
 import { isBetaEnabled } from "@/lib/beta/config";
+import { expireSessionCookies } from "@/lib/beta/session-cookies";
 
 import { RATE_LIMIT_BUCKET_NAMES, type RateLimitBucketName } from "./rate-limit-buckets.generated";
 
@@ -133,7 +134,13 @@ async function betaAdmissionError(
     route: resolveRouteString(request, options.route),
     requestId: options.requestId,
   });
-  return apiError("beta_not_allowed", 403, { request, requestId: options.requestId });
+  const denial = apiError("beta_not_allowed", 403, { request, requestId: options.requestId });
+  // Automatic sign-out, API-first case (BRAWUKA-970): a revoked session whose
+  // first request is an API call never loads a page, so the page gate cannot
+  // clear it. The 403 carries the expiry itself — the browser stops presenting
+  // a session the app has already rejected, and the status stays 403.
+  expireSessionCookies(request, denial);
+  return denial;
 }
 
 /**

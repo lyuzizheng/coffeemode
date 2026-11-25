@@ -27,7 +27,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import pg from "pg";
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { GET as callbackGET } from "@/app/auth/callback/route";
 import { closePool, getPoolConfig } from "@/lib/db/postgres";
 import {
@@ -305,6 +305,35 @@ describeBoundary("boundary — closed-beta across Auth and app stores (BRAWUKA-9
         "http://localhost:3000/auth/callback?error=server_error&error_description=upstream",
       );
       expect(redirectTarget(response)).toBe("http://localhost:3000/?auth=error");
+    });
+  });
+
+  describe("gate off (BETA_MODE=0, sign-ups still closed in Supabase)", () => {
+    beforeEach(() => {
+      process.env.BETA_MODE = "0";
+    });
+
+    afterEach(() => {
+      process.env.BETA_MODE = "1";
+    });
+
+    it("keeps a provider refusal on the generic auth path and audits nothing", async () => {
+      // `/beta` redirects to `/` while the gate is off: routing the refusal
+      // there would show the user no message at all (BRAWUKA-970 review).
+      const response = await callback(
+        "http://localhost:3000/auth/callback?error=access_denied" +
+          "&error_code=signup_disabled&error_description=Signups%20not%20allowed%20for%20this%20instance",
+      );
+      expect(redirectTarget(response)).toBe("http://localhost:3000/?auth=error");
+      expect(telemetry.filter((line) => line.type === "beta.denied")).toHaveLength(0);
+    });
+
+    it("keeps a verifyOtp signup_disabled error on the generic auth path", async () => {
+      const response = await callback(
+        `http://localhost:3000/auth/callback?token_hash=provisioned:${ghostEmail}&type=magiclink`,
+      );
+      expect(redirectTarget(response)).toBe("http://localhost:3000/?auth=error");
+      expect(telemetry.filter((line) => line.type === "beta.denied")).toHaveLength(0);
     });
   });
 });

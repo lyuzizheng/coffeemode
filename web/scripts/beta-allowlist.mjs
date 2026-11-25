@@ -18,6 +18,14 @@
  * Connection: `--database-url` or `DATABASE_URL` (the same value the app
  * uses). No default — pointing this at the wrong database would edit a real
  * allowlist.
+ *
+ * Two stores (ADR-0010 §1): this roster lives in the application database and
+ * is the only authority. Supabase Auth keeps its own user store, and with
+ * public sign-ups OFF an address must also EXIST there before its first Google
+ * sign-in. `add` therefore provisions the Auth account too when
+ * SUPABASE_URL + SUPABASE_SECRET_KEY are set (idempotent; `--no-provision`
+ * skips it). Without the key it prints the dashboard step instead of failing
+ * silently — a roster row without an Auth account can never sign in.
  */
 import pg from "pg";
 
@@ -29,7 +37,12 @@ Usage:
   node scripts/beta-allowlist.mjs remove <email>           [--database-url <url>]
 
 Environment:
-  DATABASE_URL   Postgres connection string (used when --database-url is absent).
+  DATABASE_URL        Postgres connection string (used when --database-url is absent).
+  SUPABASE_URL        Supabase project URL (provisioning; NEXT_PUBLIC_SUPABASE_URL accepted).
+  SUPABASE_SECRET_KEY Secret key for the Auth Admin API (legacy SUPABASE_SERVICE_ROLE_KEY accepted).
+
+Options:
+  --no-provision      Write the roster row only; provision the Auth user elsewhere.
 `;
 
 const EMAIL_SHAPE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
@@ -49,8 +62,8 @@ function parseArgs(argv) {
       continue;
     }
     const name = arg.slice(2);
-    if (name === "json") {
-      flags.json = true;
+    if (name === "json" || name === "no-provision") {
+      flags[name] = true;
       continue;
     }
     const value = argv[i + 1];
@@ -112,6 +125,67 @@ async function addEmail(client, email, note) {
   console.log(`invited  ${email}${note ? `  (${note})` : ""}`);
 }
 
+function supabaseAdmin() {
+  const url = (process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? "").replace(
+    /\/+$/,
+    "",
+  );
+  const secret = process.env.SUPABASE_SECRET_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY;
+  return { url, secret };
+}
+
+/**
+ * Provision the address in Supabase Auth (one user store, one roster).
+ *
+ * Pre-provisioning is what makes the first Google sign-in succeed while public
+ * sign-ups are closed: GoTrue links the Google identity to the existing user by
+ * its verified email. It is a precondition, never a grant — the app still
+ * refuses any address missing from `beta_allowlist`, and the roster is written
+ * before this call.
+ */
+async function provisionAuthUser(email, skip) {
+  const { url, secret } = supabaseAdmin();
+  if (skip) {
+    console.log("skipped Auth provisioning  (--no-provision)");
+    return;
+  }
+  if (!url || !secret) {
+    console.log(
+      "warning: Supabase Auth not provisioned — set SUPABASE_URL + SUPABASE_SECRET_KEY, " +
+        "or add this user in the dashboard before their first sign-in",
+    );
+    return;
+  }
+  let response;
+  try {
+    response = await fetch(`${url}/auth/v1/admin/users`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        apikey: secret,
+        authorization: `Bearer ${secret}`,
+      },
+      body: JSON.stringify({ email, email_confirm: true }),
+    });
+  } catch (err) {
+    fail(`Supabase Auth unreachable: ${err instanceof Error ? err.message : String(err)}`);
+  }
+  const body = await response.json().catch(() => null);
+  if (response.ok) {
+    console.log(`provisioned  ${email}  (Supabase Auth)`);
+    return;
+  }
+  if (response.status === 422 && body?.error_code === "email_exists") {
+    console.log(`already provisioned  ${email}  (Supabase Auth)`);
+    return;
+  }
+  fail(
+    `Supabase Auth refused to provision ${email} (${response.status}): ` +
+      `${body?.msg ?? body?.message ?? body?.error ?? "no body"} — ` +
+      "the roster row is written; fix the Auth account before the first sign-in",
+  );
+}
+
 async function removeEmail(client, email) {
   const { rowCount } = await client.query(
     `update beta_allowlist
@@ -143,7 +217,10 @@ async function main() {
   await client.connect();
   try {
     if (command === "list") await listEmails(client, Boolean(flags.json));
-    if (command === "add") await addEmail(client, email, flags.note);
+    if (command === "add") {
+      await addEmail(client, email, flags.note);
+      await provisionAuthUser(email, Boolean(flags["no-provision"]));
+    }
     if (command === "remove") await removeEmail(client, email);
   } finally {
     await client.end();

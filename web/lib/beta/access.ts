@@ -17,7 +17,7 @@ import { emitTelemetryLine } from "@/lib/observability/server-log";
  * an email address.
  */
 
-export type BetaDenialReason = "not_allowlisted" | "no_email";
+export type BetaDenialReason = "not_allowlisted" | "no_email" | "signup_disabled";
 export type BetaDecision =
   | { allowed: true }
   | { allowed: false; reason: BetaDenialReason };
@@ -43,6 +43,10 @@ export async function betaDecisionFor(email: string | null | undefined): Promise
 
 /**
  * Audit trail for a refused attempt (`beta.denied`, spec 0011 D6/D7).
+ *
+ * `signup_disabled` is the provider-side refusal Supabase reports while public
+ * sign-ups are closed: the app never saw an identity for it, so the line has no
+ * email digest.
  *
  * The address is recorded only as a truncated SHA-256 digest: the log answers
  * "did this person try, and why were they refused" without writing personal

@@ -75,6 +75,18 @@ function parseBody(req) {
   });
 }
 
+/**
+ * Admin-provisioned accounts (BRAWUKA-970). The real Supabase project keeps
+ * its own Auth database (ADR-0010 §1); this stand-in keeps only what the
+ * closed-beta flow observes: an address either exists (admin created it) or
+ * cannot sign in while sign-ups are disabled.
+ */
+const provisionedUsers = new Map();
+
+function authAdminKey(req) {
+  return (req.headers.authorization ?? "").replace(/^Bearer\s+/i, "");
+}
+
 function deriveUserId(email) {
   const hash = crypto.createHash("sha256").update(email).digest("hex");
   return `${hash.slice(0, 8)}-${hash.slice(8, 12)}-4${hash.slice(13, 16)}-a${hash.slice(17, 20)}-${hash.slice(20, 32)}`;
@@ -184,6 +196,36 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (path === "/auth/v1/admin/users" && (req.method === "POST" || req.method === "GET")) {
+    if (!authAdminKey(req)) {
+      json(res, 401, { error: "unauthorized", message: "admin API needs a secret key" });
+      return;
+    }
+    if (req.method === "GET") {
+      const users = [...provisionedUsers].map(([email, id]) => ({ id, email, role: "authenticated" }));
+      json(res, 200, { aud: "authenticated", users });
+      return;
+    }
+    const body = await parseBody(req);
+    const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
+    if (!email) {
+      json(res, 422, { code: 422, error_code: "validation_failed", msg: "email is required" });
+      return;
+    }
+    if (provisionedUsers.has(email)) {
+      json(res, 422, {
+        code: 422,
+        error_code: "email_exists",
+        msg: "A user with this email address has already been registered",
+      });
+      return;
+    }
+    const id = deriveUserId(email);
+    provisionedUsers.set(email, id);
+    json(res, 200, { id, email, role: "authenticated", email_confirmed_at: new Date().toISOString() });
+    return;
+  }
+
   if (req.method === "POST" && path === "/auth/v1/logout") {
     res.writeHead(204, {
       "access-control-allow-origin": "*",
@@ -206,6 +248,28 @@ const server = http.createServer(async (req, res) => {
     }
     if (tokenHash.startsWith("expired-")) {
       json(res, 403, { error_code: "otp_expired", msg: "Token has expired or is invalid" });
+      return;
+    }
+    if (tokenHash.startsWith("provisioned:")) {
+      const email = tokenHash.slice("provisioned:".length).trim().toLowerCase();
+      const id = provisionedUsers.get(email);
+      if (!id) {
+        // Sign-ups are closed: an address the operator never provisioned
+        // cannot acquire an account, and GoTrue says so with this code.
+        json(res, 422, {
+          code: 422,
+          error_code: "signup_disabled",
+          msg: "Signups not allowed for this instance",
+        });
+        return;
+      }
+      json(res, 200, {
+        access_token: fakeJwt(id, { email }),
+        token_type: "bearer",
+        expires_in: 3600,
+        refresh_token: `mock-refresh-${id}`,
+        user: { id, email, role: "authenticated" },
+      });
       return;
     }
     // Like the token grant above: one deterministic fixture user.

@@ -412,17 +412,23 @@ No email infra, no magic links.
 
 ```text
 Owner decision 2026-10-26: invite-only beta first. No public signup, no
-email/password provider, no Apple yet. Three server-side locks:
-1. Supabase project: public sign-up OFF, Google provider ON, and
-   Authentication → Hooks → Before User Created → public.beta_before_user_created
-   (web/db/migrations/0034_beta_allowlist.sql). The hook raises for an address
-   that is not on beta_allowlist, so a direct /auth/v1/signup or an
-   out-of-band OAuth exchange cannot create an uninvited account.
+email/password provider, no Apple yet. Two stores, three server-side locks (ADR-0010 §1: Supabase keeps Auth only;
+the app data — including this roster — lives in the application database):
+1. Supabase project: public sign-up OFF, Google provider ON. With sign-ups
+   closed, no OAuth flow can create an account at all; the operator
+   pre-provisions each invited address in Supabase Auth (`beta-allowlist.mjs
+   add` does it when SUPABASE_SECRET_KEY is configured, otherwise the
+   dashboard's Add user). Supabase answers an unprovisioned provider attempt
+   with `error_code=signup_disabled`, which the app routes to the refusal
+   page. No SQL hook is installed and none may be: the Auth database is not
+   the application database.
 2. Page gate (lib/beta/page-gate.ts via web/proxy.ts): while the gate is on,
    every GET/HEAD page outside beta.publicPaths is REWRITTEN to /beta —
    rewrite, never redirect, because a redirect would drop a magic link's
-   #access_token fragment. A verified but unlisted session is rewritten to
-   /beta?denied=1 after its session has been destroyed by the auth tail.
+   #access_token fragment. A verified but unlisted or revoked session is
+   rewritten to /beta?denied=1 AND its Supabase session cookies are expired on
+   that response (automatic sign-out, no button); a refused session that opens
+   /beta directly is signed out the same way.
 3. API gate (lib/api/guard.ts): every apiRoute asks for admission before the
    handler. Anonymous → 401 unauthorized; verified but unlisted → 403
    beta_not_allowed. Exempt: /api/health, /api/heartbeat, /api/config, and
@@ -443,7 +449,11 @@ revoked_at). `email` must be lower case and match a minimal address shape
 request re-reads the row, so a revoke refuses the next page request and the
 next API call (BRAWUKA-972 criterion 1). Operated with
 web/scripts/beta-allowlist.mjs (add / list / remove); addresses are never
-stored in this repository — the row's `note` is the tester roster.
+stored in this repository — the row's `note` is the tester roster. `add`
+writes the roster row first and then provisions the Supabase Auth account
+(idempotent; `--no-provision` skips it, and a missing secret key prints the
+dashboard step). Provisioning is a precondition for signing in, never a grant:
+the app admits only addresses present and live in `beta_allowlist`.
 Edge cache: while the gate is on, the generated ruleset
 (deploy/dokploy/cloudflare-cache-rules.json) carries one `/cafes/*` bypass and
 no cache-eligible rule — a cached shell would be a cached bypass of the page
@@ -451,7 +461,7 @@ gate. The generator flips back automatically when `beta.enabled` is false;
 enabling or disabling the gate on a live deployment needs one `/cafes/*` purge
 (docs/design/beta-gate-v1.md §9).
 Audit: one `beta.denied` telemetry line per refusal carrying the route, the
-reason (not_allowlisted | no_email), and email_hash (16 hex chars of
+reason (not_allowlisted | no_email | signup_disabled), and email_hash (16 hex chars of
 SHA-256) — never the address and never a token.
 Not in scope: a signup page, invite codes, transactional email, Apple sign-in.
 ```

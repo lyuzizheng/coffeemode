@@ -677,7 +677,6 @@
     "deniedKicker": "暂未受邀",
     "deniedTitle": "这个账号还不在名单里",
     "deniedBody": "内测只邀请，不开放。可以申请邀请，或换一个 Google 账号登录。",
-    "signedInAs": "当前登录：{email}",
     "request": "申请内测邀请",
     "requestSubject": "CafeMood 内测邀请申请",
     "footerPrivacy": "隐私",

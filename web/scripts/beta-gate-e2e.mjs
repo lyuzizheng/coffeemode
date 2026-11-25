@@ -8,7 +8,9 @@
  *   1. anonymous  — `/` and a cafe deep link show the beta surface, and the
  *                   API answers 401 (the gate is not UI-only);
  *   2. refused    — a verified session whose address is not on
- *                   `beta_allowlist` lands on the refusal copy;
+ *                   `beta_allowlist` lands on the refusal copy, and that
+ *                   response expires its session cookies (automatic sign-out);
+
  *   3. admitted   — an allowlisted address reaches the product shell.
  *
  * Screenshots of each state are the issue's delivery evidence
@@ -174,14 +176,26 @@ async function refused() {
   const home = await page.goto(`${base}/`, { waitUntil: "domcontentloaded" });
   if (home?.status() !== 200) throw new Error(`refused / returned ${home?.status()}`);
   await page.getByRole("heading", { name: REFUSAL_HEADING }).waitFor({ timeout: 20000 });
-  if ((await page.getByText(REFUSED_EMAIL).count()) === 0) {
-    throw new Error("refusal page does not name the signed-in account");
-  }
   const shell = await page.locator("aside, canvas.maplibregl-canvas").count();
   if (shell !== 0) throw new Error("refused session reached the product shell");
   await shot(page, SLUG, "refused-home");
+
+  // Automatic sign-out (BRAWUKA-970): the refusal response expires the
+  // session cookies, so the next navigation is anonymous — no manual
+  // sign-out button is required to leave the account behind.
+  const leftover = (await context.cookies()).filter((cookie) =>
+    /-auth-token/.test(cookie.name),
+  );
+  if (leftover.length > 0) {
+    throw new Error(`refusal left session cookies: ${leftover.map((c) => c.name).join(", ")}`);
+  }
+  await page.goto(`${base}/`, { waitUntil: "domcontentloaded" });
+  await page.getByRole("heading", { name: BETA_HEADING }).waitFor({ timeout: 20000 });
+  if ((await page.getByRole("heading", { name: REFUSAL_HEADING }).count()) !== 0) {
+    throw new Error("refused session survived the sign-out");
+  }
   await context.close();
-  console.log("[beta-gate] ok refused (refusal copy, no product shell)");
+  console.log("[beta-gate] ok refused (refusal copy, no product shell, session signed out)");
 }
 
 async function admitted() {

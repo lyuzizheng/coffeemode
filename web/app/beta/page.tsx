@@ -14,7 +14,8 @@ import { betaInviteEmail, isBetaEnabled } from "@/lib/beta/config";
  *
  * - admitted identity → `/`, nothing to do here;
  * - gate off → `/`, the beta page must never be a dead end;
- * - signed-in but refused → the refusal state with sign-out;
+ * - signed-in but refused → the refusal state (the gate's response already
+ *   cleared the session cookies);
  * - anonymous → the invitation state.
  *
  * Admission is decided server-side (`getCurrentUser` + the allowlist), never by
@@ -47,7 +48,6 @@ export default async function BetaPage({
   return (
     <BetaSurface
       denied={Boolean(user) || params.denied === "1"}
-      refusedEmail={user?.email ?? null}
       inviteEmail={betaInviteEmail()}
     />
   );

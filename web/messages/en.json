@@ -677,7 +677,6 @@
     "deniedKicker": "Not on the list",
     "deniedTitle": "This account isn't invited yet",
     "deniedBody": "The beta is invitation-only. Ask for an invitation, or sign in with another Google account.",
-    "signedInAs": "Signed in as {email}",
     "request": "Request an invitation",
     "requestSubject": "CafeMood closed beta — invitation request",
     "footerPrivacy": "Privacy",

@@ -63,7 +63,7 @@ navigate to yet.
 |---|---|---|---|---|
 | Invitation (anonymous) | `CLOSED BETA` | CafeMood 内测中 | one sentence: small invited circle, sign in with Google to check the list | Google (primary) · request-invite link |
 | Refused · just signed in | `NOT ON THE LIST` | This account isn't invited yet | invitation-only; signed out again; ask, or try another Google account | Google (primary) · request-invite link |
-| Refused · session still open (revoked mid-beta) | same | same | same + `Signed in as {email}` in mono, 12px | Google · sign-out (outline) · request-invite link |
+| Refused · session revoked mid-beta | same | same | same; the response expires the session cookies, so the next request is anonymous | Google · request-invite link |
 | Admitted (signed in, allowlisted) | — | — | — | server redirects to `/`; the surface never renders |
 | Gate off (`BETA_MODE=0`) | — | — | — | server redirects to `/`; the page is never a dead end |
 
@@ -116,9 +116,7 @@ disabled and before any script runs (server-rendered).
 | `deniedKicker` | Not on the list | 暂未受邀 |
 | `deniedTitle` | This account isn't invited yet | 这个账号还不在名单里 |
 | `deniedBody` | The beta is invitation-only. Ask for an invitation, or sign in with another Google account. | 内测只邀请，不开放。可以申请邀请，或换一个 Google 账号登录。 |
-| `signedInAs` | Signed in as {email} | 当前登录：{email} |
 | `request` | Request an invitation | 申请内测邀请 |
-| `signOut` | Sign out | 退出登录 |
 
 ## 8. Non-goals
 
@@ -162,12 +160,26 @@ Enabling or disabling the gate on a live deployment is a two-step operation:
 apply the regenerated ruleset, then purge the zone's `/cafes/*` URLs once, so
 entries stored under the previous policy cannot outlive the switch.
 
-**Supabase project settings** (owner, once per project — tracked in
-`docs/agent/pending-user-actions.md`): public sign-up off, Google provider on,
-`Authentication → Hooks → Before User Created` pointed at
-`public.beta_before_user_created`. The hook is the second lock: even a direct
-`/auth/v1/signup` or an OAuth flow that skips the app cannot create a user for
-an address the operator has not invited.
+**Two stores, one roster** (ADR-0010 §1). Supabase Auth keeps its own user
+store; the application database keeps `beta_allowlist`. Settings the owner
+applies once per project (`docs/agent/pending-user-actions.md` §1b):
+
+- Authentication → Providers → Email: **Allow new users to sign up OFF**.
+  Google stays enabled. With sign-ups closed, a Google identity that matches no
+  provisioned Auth user cannot create an account at all; Supabase redirects
+  the provider callback to the app with `error_code=signup_disabled`, and the
+  app answers with the refusal page instead of the generic auth error.
+- Every invited address must exist in Auth **before** its first sign-in.
+  `beta-allowlist.mjs add` provisions it through the Auth Admin API when
+  `SUPABASE_URL` + `SUPABASE_SECRET_KEY` are set; otherwise use the dashboard's
+  **Add user** with the same address. Provisioning is a precondition, never a
+  grant: the app admits only addresses that are live on the roster, so a
+  provisioned-but-uninvited account is refused on its first request.
+
+No SQL hook is installed. A Postgres hook configured for Supabase Auth runs
+inside the Auth database, which ADR-0010 separates from the application
+database — the roster would not be visible there, and one roster is the
+requirement.
 
 **Feedback channel**: testers reply to the invitation address
 (`beta.inviteEmail` in `web/config/app.yaml`, the same mailbox behind the
@@ -180,16 +192,18 @@ proves the three states with mock-verified sessions; the release gate also
 wants one interactive Google round-trip per identity, because that is the path
 a real tester takes:
 
-1. Invite the allowed test address (`beta-allowlist.mjs add … --note "…"`).
+1. Invite and provision the allowed test address — one command when the shell
+   has `DATABASE_URL`, `SUPABASE_URL`, and `SUPABASE_SECRET_KEY`:
+   `beta-allowlist.mjs add … --note "…"` (prints `provisioned`).
 2. Anonymous browser window → `/` shows the invitation copy, and
    `/api/cafes` answers 401.
 3. Allowed account → Google sign-in lands in the product shell, and a
    `profiles` row exists for it.
-4. Non-allowlisted account → Google sign-in lands on `/beta?denied=1`; the
-   session is already destroyed, and Supabase → Authentication → Users shows
-   no usable account for it. If the project created the user before the
-   Before User Created hook was configured, delete that user — the hook only
-   blocks new creations.
+4. Uninvited account → Google sign-in lands on `/beta?denied=1`; the session
+   is already destroyed, and Supabase → Authentication → Users shows no new
+   account for that address (sign-ups are closed, so none was created). If an
+   account from an earlier open-signup period exists, delete it in the
+   dashboard — closing sign-ups blocks new creations only.
 5. Capture the three screenshots plus the Supabase Users page; those are the
    release evidence.
 
@@ -202,6 +216,7 @@ in `http-beta-gate.integration.test.ts` / `beta-gate-e2e.mjs`):
 | Who | Page | API |
 |---|---|---|
 | anonymous | `/beta` (invitation) | 401 `unauthorized` |
-| signed in, not on the list | `/beta?denied=1` (refusal, session signed out by the callback) | 403 `beta_not_allowed` |
+| signed in, not on the list | `/beta?denied=1` (refusal; the page response expires the session cookies) | 403 `beta_not_allowed` |
 | signed in, allowlisted | the product | normal envelope |
-| revoked mid-session | `/beta?denied=1` on the next page request | 403 `beta_not_allowed` |
+| revoked mid-session | `/beta?denied=1` on the next page request (session cookies expired there) | 403 `beta_not_allowed` |
+| Google identity Supabase never provisioned | `/beta?denied=1` with no account created | n/a (no session) |

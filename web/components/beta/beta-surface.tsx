@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { CoffeeIcon } from "@/components/icons";
 import { SignInProviderButtons } from "@/components/auth/sign-in-provider-buttons";
-import { SignOutButton } from "@/components/auth/sign-out-button";
 import { APP_NAME } from "@/lib/site";
 
 /**
@@ -17,19 +16,19 @@ import { APP_NAME } from "@/lib/site";
  * the page and the proxy own it.
  *
  * Deliberately absent: signup, password, Apple, waitlist counters, banners.
- * The beta is invitation-only, so the only actions are the enabled providers,
- * the invitation request, and (when a refusal leaves a session open) sign-out.
+ * The beta is invitation-only, so the only actions are the enabled providers
+ * and the invitation request. A refused session is already signed out by the
+ * response that showed this page (BRAWUKA-970), so no account is named and
+ * there is nothing to sign out of.
  */
 export interface BetaSurfaceProps {
   /** True when the visitor reached this surface by being refused. */
   denied: boolean;
-  /** Email of a still-open refused session; null when signed out. */
-  refusedEmail?: string | null;
   /** Invitation inbox (`beta.inviteEmail`) behind the request link. */
   inviteEmail: string;
 }
 
-export function BetaSurface({ denied, refusedEmail = null, inviteEmail }: BetaSurfaceProps) {
+export function BetaSurface({ denied, inviteEmail }: BetaSurfaceProps) {
   const t = useTranslations("beta");
   const mailto = `mailto:${inviteEmail}?subject=${encodeURIComponent(t("requestSubject"))}`;
 
@@ -53,16 +52,10 @@ export function BetaSurface({ denied, refusedEmail = null, inviteEmail }: BetaSu
           <p className="max-w-[34ch] font-serif text-md leading-relaxed text-muted">
             {denied ? t("deniedBody") : t("body")}
           </p>
-          {denied && refusedEmail ? (
-            <p className="font-mono text-xs break-all text-muted">
-              {t("signedInAs", { email: refusedEmail })}
-            </p>
-          ) : null}
         </div>
 
         <div className="flex flex-col gap-3">
           <SignInProviderButtons />
-          {denied && refusedEmail ? <SignOutButton variant="outline" /> : null}
           <a
             href={mailto}
             className="cm-focus inline-flex min-h-11 items-center justify-center rounded-md text-sm text-foreground underline decoration-separator underline-offset-4 transition-colors duration-150 hover:text-accent motion-reduce:transition-none"

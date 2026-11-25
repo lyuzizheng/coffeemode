@@ -9,8 +9,7 @@
  *     plus the infra-probe exemptions;
  *   - `GET /auth/callback` + `completeSignIn` — where a refused identity is
  *     signed out and where an admitted one gets its profile row;
- *   - the `beta_allowlist` table, its `before-user-created` hook body, and the
- *     operator CLI that writes it.
+ *   - the `beta_allowlist` table and the operator CLI that writes it.
  *
  * Every identity is a real fake JWT verified by the mock's `/auth/v1/user`, so
  * deleting `x-verified-user` forwarding, the admission check, or the allowlist
@@ -138,6 +137,14 @@ function deniedLines(): Record<string, unknown>[] {
   return telemetry.filter((line) => line.type === "beta.denied");
 }
 
+/** Refusal responses must expire the session cookies (`Max-Age=0`). */
+function clearedSessionCookies(response: Response): string[] {
+  return (response.headers.getSetCookie?.() ?? []).filter(
+    (header) =>
+      header.startsWith(`${COOKIE_NAME}=`) || header.startsWith(`sb-`),
+  ).filter((header) => /max-age=0/i.test(header));
+}
+
 describeBoundary("boundary — closed-beta admission (BRAWUKA-970)", () => {
   beforeAll(async () => {
     const health = await fetch(`${SUPABASE_URL}/auth/v1/health`, {
@@ -246,9 +253,12 @@ describeBoundary("boundary — closed-beta admission (BRAWUKA-970)", () => {
       expect(response.headers.get("x-middleware-request-x-verified-user")).toContain("v1.");
     });
 
-    it("rewrites an unlisted session to the refusal copy and audits the attempt", async () => {
+    it("rewrites an unlisted session to the refusal copy, signs it out, and audits the attempt", async () => {
       const response = await proxy(pageRequest("/", sessionCookie(UNLISTED_ID, UNLISTED_EMAIL)));
       expect(rewriteTarget(response)).toMatch(/\/beta\?denied=1$/);
+      // Automatic sign-out (BRAWUKA-970): the refusal ends the browser
+      // session; the visitor is never asked to press a sign-out button.
+      expect(clearedSessionCookies(response)).not.toEqual([]);
 
       const [line] = deniedLines();
       expect(line?.reason).toBe("not_allowlisted");
@@ -260,10 +270,26 @@ describeBoundary("boundary — closed-beta admission (BRAWUKA-970)", () => {
       expect(raw).not.toContain("eyJ");
     });
 
-    it("rewrites a revoked address even though its session still verifies", async () => {
+    it("rewrites a revoked address even though its session still verifies, and signs it out", async () => {
       const response = await proxy(pageRequest("/", sessionCookie(REVOKED_ID, REVOKED_EMAIL)));
       expect(rewriteTarget(response)).toMatch(/\/beta\?denied=1$/);
+      expect(clearedSessionCookies(response)).not.toEqual([]);
       expect(deniedLines()[0]?.reason).toBe("not_allowlisted");
+    });
+
+    it("signs out a refused session that opens /beta directly", async () => {
+      const response = await proxy(pageRequest("/beta", sessionCookie(UNLISTED_ID, UNLISTED_EMAIL)));
+      // `/beta` is public (it must stay reachable anonymously), so the gate
+      // passes the render through and only expires the refused session.
+      expect(isPassThrough(response)).toBe(true);
+      expect(clearedSessionCookies(response)).not.toEqual([]);
+      expect(deniedLines()[0]?.reason).toBe("not_allowlisted");
+    });
+
+    it("keeps a refused session's cookies off the response when none were presented", async () => {
+      const response = await proxy(pageRequest("/"));
+      expect(rewriteTarget(response)).toMatch(/\/beta$/);
+      expect(clearedSessionCookies(response)).toEqual([]);
     });
 
     it("keeps the og-image route reachable instead of rewriting it to the beta page", async () => {
@@ -414,17 +440,6 @@ describeBoundary("boundary — closed-beta admission (BRAWUKA-970)", () => {
   });
 
   describe("operator surface", () => {
-    it("enforces the allowlist inside the before-user-created hook body", async () => {
-      await expect(
-        dbClient.query(`select beta_before_user_created('{"user":{"email":"ghost@example.com"}}'::jsonb)`),
-      ).rejects.toThrow(/not on the beta allowlist/);
-
-      const allowed = await dbClient.query(
-        `select beta_before_user_created('{"user":{"email":"INVITED@example.com"}}'::jsonb) as result`,
-      );
-      expect(allowed.rows[0].result).toEqual({});
-    });
-
     it("adds, lists, and revokes an address through the operator CLI", async () => {
       const run = (...args: string[]) =>
         execFileAsync("node", ["scripts/beta-allowlist.mjs", ...args], {

@@ -36,7 +36,11 @@ export function HashSessionBridge() {
     );
 
     if (params.get("error")) {
-      router.replace("/?auth=error");
+      // Supabase refuses to create an account for an unprovisioned address
+      // while sign-ups are closed (BRAWUKA-970): that is the beta answering,
+      // not an auth failure — the refusal page explains it.
+      const refused = params.get("error_code") === "signup_disabled";
+      router.replace(refused ? "/beta?denied=1" : "/?auth=error");
       return;
     }
 

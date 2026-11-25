@@ -7,7 +7,7 @@ import { VERIFIED_USER_HEADER } from "@/lib/auth/verified-user";
 import { NextRequest, NextResponse } from "next/server";
 import { redirectToPath } from "@/lib/security/origin";
 import { CAFE_SHELL_BYPASS_CACHE_CONTROL } from "@/lib/cache-policy";
-import { isBetaGatedPage, betaPageGate } from "@/lib/beta/page-gate";
+import { betaGateScope, betaPageGate } from "@/lib/beta/page-gate";
 import type { SessionUser } from "@/lib/auth/get-user";
 import { isValidUUID } from "@shared/uuid";
 import {
@@ -89,11 +89,12 @@ async function handleProxy(request: NextRequest): Promise<ProxyOutcome> {
   let sessionRefreshed = false;
   let verifiedUser: SessionUser | null | undefined;
 
-  // BRAWUKA-970: the closed-beta gate owns every non-public page. Its decision
-  // needs the verified identity, so a gated page verifies just like a cafe
-  // page does — one getUser() per view, and the same value the gate and the
-  // page consume.
-  const betaGated = isBetaGatedPage(req);
+  // BRAWUKA-970: the closed-beta gate owns every non-public page, and the
+  // `/beta` surface itself may hold a refused session it must sign out. Both
+  // decisions need the verified identity, so those pages verify just like a
+  // cafe page does — one getUser() per view, and the same value the gate and
+  // the page consume.
+  const betaScope = betaGateScope(req);
   let hasSession = false;
 
   if (url && publishableKey && hasSupabaseSessionCookie(req)) {
@@ -102,17 +103,24 @@ async function handleProxy(request: NextRequest): Promise<ProxyOutcome> {
       (req.method === "GET" || req.method === "HEAD") &&
       CAFE_PAGE_PATH.test(req.nextUrl.pathname);
     ({ response, sessionRefreshed, verifiedUser } =
-      await refreshSessionAndVerify(req, response, url, publishableKey, isCafePage || betaGated));
+      await refreshSessionAndVerify(
+        req,
+        response,
+        url,
+        publishableKey,
+        isCafePage || betaScope !== "none",
+      ));
   }
 
-  if (betaGated) {
+  if (betaScope !== "none") {
     const gateResponse = await betaPageGate(req, {
+      scope: betaScope,
       // Without a Supabase endpoint nothing can be verified: the gate answers
       // for an anonymous visitor, never for a session it did not check.
       verifiedUser: hasSession ? verifiedUser : undefined,
       carry: response,
     });
-    if (gateResponse) return gateResponse;
+    if (gateResponse) return { response: gateResponse, final: true };
   }
 
   // DG19 note: gone-cafe deep links are NOT rewritten here anymore

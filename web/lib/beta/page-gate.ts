@@ -24,12 +24,14 @@ import { isBetaEnabled, isBetaPublicPath } from "./config";
  */
 
 export interface BetaPageGateInput {
+  /** What this request owes admission (see `betaGateScope`). */
+  scope: BetaGateScope;
   /** Verified session identity. `undefined` = verification did not run or failed. */
   verifiedUser: SessionUser | null | undefined;
   /**
-   * Response that already owns any refreshed session cookies. A refusal
-   * rewrites the body but keeps them — dropping a rotated refresh token would
-   * make the next request sign the browser out (BRAWUKA-315).
+   * Response that already owns any refreshed session cookies. An anonymous
+   * rewrite keeps them — dropping a rotated refresh token would make the next
+   * request sign the browser out (BRAWUKA-315); a refusal expires them.
    */
   carry: NextResponse;
 }
@@ -37,16 +39,50 @@ export interface BetaPageGateInput {
 /** The social-card image route: an asset call wearing a page URL. */
 const OG_IMAGE_PATH = /^\/cafes\/[^/]+\/og-image$/;
 
-/** True when the proxy owns this request's admission decision. */
-export function isBetaGatedPage(request: NextRequest): boolean {
-  if (!isBetaEnabled()) return false;
-  if (request.method !== "GET" && request.method !== "HEAD") return false;
+/**
+ * What admission owes this request:
+ * - `rewrite` — a gated page; a refused or anonymous visitor gets the surface.
+ * - `signout` — `/beta` opened by a refused session: render the surface, but
+ *   expire the session cookies so the refusal does not outlive the page.
+ * - `none` — not a page the gate owns.
+ */
+export type BetaGateScope = "rewrite" | "signout" | "none";
+
+/** The proxy's admission scope for one request. */
+export function betaGateScope(request: NextRequest): BetaGateScope {
+  if (!isBetaEnabled()) return "none";
+  if (request.method !== "GET" && request.method !== "HEAD") return "none";
   const { pathname } = request.nextUrl;
-  if (pathname.startsWith("/api/")) return false;
+  if (pathname.startsWith("/api/")) return "none";
   // `/cafes/[id]/og-image` is a route handler that answers with image bytes.
   // Rewriting it would serve beta HTML to a crawler as a social card.
-  if (OG_IMAGE_PATH.test(pathname)) return false;
-  return !isBetaPublicPath(pathname);
+  if (OG_IMAGE_PATH.test(pathname)) return "none";
+  if (!isBetaPublicPath(pathname)) return "rewrite";
+  return pathname === "/beta" ? "signout" : "none";
+}
+
+/**
+ * Session cookies as `@supabase/ssr` names them: the bare/chunked auth-token
+ * pair, plus the legacy hand-set names. Opaque `sb-*-auth-token` values are
+ * chunked above ~3.2 KiB, so every `.<n>` chunk must be expired too.
+ */
+const SESSION_COOKIE = /^(?:sb-.+-(?:auth|refresh)-token(?:\.\d+)?|sb-(?:access|refresh)-token)$/;
+
+/**
+ * Expire this browser's session cookies on the outgoing response.
+ *
+ * A refused identity must not keep a session the app has already rejected
+ * (BRAWUKA-970): the response signs it out instead of asking the visitor to
+ * press a button. Next applies these writes to the request's cookie jar for
+ * the render that follows, so the refusal surface renders anonymous — by
+ * design, an account the gate rejected is never named back to the browser.
+ */
+export function clearSessionCookies(request: NextRequest, response: NextResponse): void {
+  for (const { name } of request.cookies.getAll()) {
+    if (SESSION_COOKIE.test(name)) {
+      response.cookies.set(name, "", { path: "/", maxAge: 0 });
+    }
+  }
 }
 
 /**
@@ -57,13 +93,16 @@ export async function betaPageGate(
   request: NextRequest,
   input: BetaPageGateInput,
 ): Promise<NextResponse | null> {
-  if (!isBetaGatedPage(request)) return null;
+  if (input.scope === "none") return null;
 
   // No identity at all — anonymous visitor, or a session the proxy could not
   // verify. Fail closed into the beta landing surface, which resolves the
-  // session itself and shows either the invitation CTA or the refusal.
+  // session itself and shows either the invitation CTA or the refusal. A
+  // public path (the `/beta` sign-out scope) has nothing to rewrite.
   if (!input.verifiedUser) {
-    return betaRewrite(request, false, input.carry);
+    return input.scope === "rewrite"
+      ? betaRewrite(request, false, input.carry)
+      : null;
   }
 
   const decision = await betaDecisionFor(input.verifiedUser.email);
@@ -75,7 +114,12 @@ export async function betaPageGate(
     route: `${request.method} ${request.nextUrl.pathname}`,
     requestId: getRequestId(request),
   });
-  return betaRewrite(request, true, input.carry);
+  const response =
+    input.scope === "rewrite" ? betaRewrite(request, true, input.carry) : input.carry;
+  // Automatic sign-out (BRAWUKA-970): the refused session ends with this
+  // response — no manual sign-out button is required to leave the account.
+  clearSessionCookies(request, response);
+  return response;
 }
 
 /** Rewrite to the beta surface, keeping the browser URL (and any fragment). */
@@ -89,7 +133,8 @@ function betaRewrite(
   target.search = denied ? "?denied=1" : "";
   const response = NextResponseClass.rewrite(target);
   // The surface is per-request (session state): never in a shared cache, and
-  // it carries any rotated session cookies forward.
+  // it carries any rotated session cookies forward (a refusal expires them
+  // afterwards in `betaPageGate`).
   response.headers.set("Cache-Control", "private, no-store");
   for (const cookie of carry.cookies.getAll()) {
     response.cookies.set(cookie);

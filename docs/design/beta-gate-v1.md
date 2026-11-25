@@ -156,9 +156,14 @@ check:cache-rules`) is one request-phase rule — expression
 keeps its Set-Cookie pin (a session refresh is never stored). `npm run
 gen:cache-rules` restores the normal shell cache when `beta.enabled` becomes
 false.
-Enabling or disabling the gate on a live deployment is a two-step operation:
-apply the regenerated ruleset, then purge the zone's `/cafes/*` URLs once, so
-entries stored under the previous policy cannot outlive the switch.
+Enabling or disabling the gate on a live deployment is a two-step operation
+when `beta.enabled` changes: apply the regenerated ruleset, then purge the
+zone's `/cafes/*` URLs once, so entries stored under the previous policy cannot
+outlive the switch. A `BETA_MODE` flip is not that operation: the ruleset is
+generated from `beta.enabled` alone, so the flag changes which code path answers
+(`/beta` vs the product) while the ruleset — and the purge it would need —
+stays exactly as deployed. A rule that is stricter than the running app (the
+`/cafes/*` bypass over an open deployment) costs cache hits, never correctness.
 
 **Two stores, one roster** (ADR-0010 §1). Supabase Auth keeps its own user
 store; the application database keeps `beta_allowlist`. Settings the owner

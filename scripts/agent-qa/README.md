@@ -154,35 +154,25 @@ the jar reports every coexisting same-name cookie (including one scoped to
 unconfigured Access tenant, and a sibling staging host are each refused with
 zero requests and zero cookie writes.
 
-## Manifest is Access-protected: expected redirect, not an env failure (BRAWUKA-1044)
+## Manifest fetch redirects under Access: expected, not an env failure (BRAWUKA-1044)
 
-`GET https://staging.cafemood.app/manifest.webmanifest` sits behind the same
-Cloudflare Access application as the rest of the host. Verified 2026-11-27
-against the deployed policy: the staging application covers the whole
-hostname (one `public` destination, no path prefix), there is no second
-application scoped to the manifest path, and no policy uses the `bypass`
-decision — the three policies are two `non_identity` service-token rules and
-one email-domain `allow`, with preflight bypass disabled. An anonymous request
-therefore answers `302` to the Access login page with
-`redirect_url=/manifest.webmanifest`; `/` answers the same way. The manifest
-is not anonymously fetchable.
-
-Decision: keep it protected. Opening the manifest would need a path-scoped
-bypass application — a broadening of anonymous access that needs an Owner
-decision — and no journey verdict depends on the manifest loading. Nor can the
-harness authenticate that fetch: `Manifest` is one of the resource types this
-ego-browser build rejects in `Fetch.enable` (see
+Access fronts the staging host, so the PWA manifest is gated like every other
+path, and the harness cannot authenticate that fetch. `Manifest` is one of the
+resource types this ego-browser build rejects in `Fetch.enable` (see
 `ACCESS_FETCH_RESOURCE_TYPES`), so a manifest request never pauses for token
-injection, and Chromium sends it without the `CF_Authorization` cookie (CDP on
-the 2026-11-27 round). The redirect is what every staging visitor sees, not a
-symptom of the QA cookie setup.
+injection, and the browser sends it without the session cookie (CDP on the
+2026-11-27 round). The manifest answers the Access redirect while Document
+navigations behind the single host-only cookie stay 200.
+
+Policy evidence and the deployment read live on the private issue
+(BRAWUKA-1044), not here.
 
 The rule: a manifest request that misses the cookie is EXPECTED staging
 behaviour, already covered by the F10 console whitelist. It is never
-`env-failure:access-cookie-not-sent` and must never stop a round. The cookie
-invariant applies to Document navigations and to the same-origin subresources
-the harness intercepts; the manifest's `302` is not a verdict assertion, and
-its origin status stays unverified while Access fronts the host.
+`env-failure:access-cookie-not-sent` and must never stop a round. Only the
+manifest redirect qualifies for this exception: the cookie invariant still
+applies to Document navigations and to the same-origin subresources the
+harness intercepts, and the manifest's `302` is not a verdict assertion.
 
 ## Secret-bridge contract (F8)
 

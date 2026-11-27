@@ -141,8 +141,9 @@ had stamped sat unused.
    access and ends the round instead of retrying or spoofing.
 
 `verifySingleAccessCookie(page, stagingUrl)` re-checks the invariant on its own
-and is cheap enough to call before each journey; the bootstrap returns only
-the purged domains, never a value or token.
+and is cheap enough to call before each journey; the bootstrap returns the
+purged domains plus the non-secret JWT issuer origin (`accessLoginOrigin`),
+never a value or token.
 
 Verified on this machine 2026-11-25 against the real Chromium jar in the
 `Default` profile: a stamped parent-domain decoy is detected and deleted, the
@@ -172,6 +173,56 @@ reported in the console; it does not relax this check.
 
 Policy evidence and the deployment read live on the private issue
 (BRAWUKA-1044), not here.
+
+### Capture the response; never equate "no `responseReceived`" with "no response" (BRAWUKA-1047)
+
+The 2026-11-28 scheduled round stopped before its first journey with
+`env-failure:manifest-response-unverified`: it looked for the manifest's status
+in `Network.responseReceived` and found two manifest requests without one.
+Chromium reports a redirected fetch on the NEXT `Network.requestWillBeSent` of
+the same requestId — `redirectResponse.status` with its `Location` — and a 302
+manifest fetch never produces a `responseReceived` for the manifest URL. The
+Access login page that follows is a different URL; its final `200` is not the
+manifest's status.
+
+Accept exactly one of these browser-observed shapes:
+
+- `Network.responseReceived` for the manifest URL with status `200` and
+  content type `application/manifest+json`.
+- `Network.requestWillBeSent` whose previous stage was the manifest URL and
+  whose `redirectResponse.status` is `302`, with `Location` on the configured
+  Access login origin at `/cdn-cgi/access/login/<staging host>`. Record the
+  status and that destination with its query removed.
+
+Every other result — 4xx/5xx, a redirect elsewhere, HTML at the manifest URL,
+or no observed response — is `env-failure:manifest-response-unverified`: stop
+the round and report the observed statuses. The first manifest hop is
+authoritative: a redirect to an unapproved destination stays rejected even if
+the chain later returns to the manifest URL with 200. Do not fall back to
+service-token request headers.
+
+`manifest-probe.mjs` implements the correlation and the fail-closed check. Run
+it after `ensureSingleAccessCookie` and before the Access request pump, because
+`page.events()` is the only drain and both consumers cannot share it:
+
+```js
+const { accessLoginOrigin } = await ensureSingleAccessCookie(page, {
+  stagingUrl,
+  pair,
+});
+const verdict = await captureManifestResponse(page, {
+  stagingUrl,
+  accessLoginOrigin,
+});
+// { accepted: true, outcome: "manifest", status: 200 }
+// { accepted: true, outcome: "access-redirect", status: 302, ... }
+```
+
+A null `accessLoginOrigin` fails closed: the destination cannot be pinned to
+the configured login page. A runner that already drained `page.events()` can
+classify the raw events with the pure helpers instead of re-navigating:
+`summarizeManifestEvidence` needs only the events and `manifestUrl`, while
+`classifyManifestEvidence` also takes `stagingUrl` and `accessLoginOrigin`.
 
 ## Secret-bridge contract (F8)
 

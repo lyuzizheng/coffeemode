@@ -31,7 +31,9 @@
  * ```
  *
  * The cookie value flows from the bootstrap response into `Network.setCookie`
- * and nowhere else: no helper returns it and no error message includes it.
+ * and nowhere else: no helper returns it and no error message includes it. The
+ * bootstrap does return the JWT's `iss` origin (`accessLoginOrigin`) as
+ * non-secret configuration metadata for the manifest probe (BRAWUKA-1047).
  */
 
 /** Name Cloudflare Access uses for the session cookie. */
@@ -182,8 +184,8 @@ export function assertSingleHostOnlyAccessCookie(cookies, host) {
 }
 
 /**
- * Read the `CF_Authorization` value from a bootstrap response's `Set-Cookie`
- * headers. First match wins; `null` when absent.
+ * Read the value from a bootstrap response's `Set-Cookie` headers. First match
+ * wins; `null` when absent.
  *
  * @param {{ getSetCookie?: () => string[] } | undefined} headers fetch response headers
  * @param {string} [name] cookie name (default CF_Authorization)
@@ -198,6 +200,40 @@ export function readAccessCookieValue(headers, name = ACCESS_COOKIE_NAME) {
     if (match && match[1] !== "") return match[1];
   }
   return null;
+}
+
+/**
+ * Read the team authentication origin from an Access session JWT (BRAWUKA-1047).
+ *
+ * Cloudflare issues `CF_Authorization` as a JWT whose `iss` is the team domain
+ * (`https://<team>.cloudflareaccess.com`). The manifest probe needs that origin
+ * to pin a 302 to the CONFIGURED Access login page instead of accepting any
+ * `*.cloudflareaccess.com` tenant, so the bootstrap returns it as non-secret
+ * metadata. The signature is not verified: the value arrived from the exact
+ * staging origin over TLS, and the origin is used only as a configuration pin
+ * — never as authentication. The cookie value itself never leaves this module.
+ *
+ * @param {unknown} value `CF_Authorization` value
+ * @returns {string | null} `https://<team>.cloudflareaccess.com`, or `null` when
+ *   the value is opaque/malformed and the caller must fail closed
+ */
+export function readAccessTokenIssuer(value) {
+  const parts = String(value ?? "").split(".");
+  if (parts.length !== 3) return null;
+  let payload;
+  try {
+    payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8"));
+  } catch {
+    return null;
+  }
+  if (typeof payload?.iss !== "string") return null;
+  try {
+    const issuer = new URL(payload.iss);
+    if (issuer.protocol !== "https:") return null;
+    return issuer.origin;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -333,15 +369,20 @@ export async function verifySingleAccessCookie(page, stagingUrl) {
  * the probe's own client identity; a bot challenge throws
  * `env-failure:access-probe-blocked` and ends the round.
  *
+ * Returns `accessLoginOrigin` (the JWT issuer origin) so the manifest probe can
+ * pin a 302 to the configured Access login page. It is `null` for an opaque
+ * token; the manifest probe then fails closed instead of accepting any tenant.
+ *
  * @param {{ cdp: (method: string, params?: unknown) => Promise<unknown> }} page ego-browser Page
  * @param {{ stagingUrl: string, pair: { clientId: string, clientSecret: string }, fetchImpl?: typeof fetch }} opts
- * @returns {Promise<{ purgedDomains: string[] }>}
+ * @returns {Promise<{ purgedDomains: string[], accessLoginOrigin: string | null }>}
  */
 export async function ensureSingleAccessCookie(page, { stagingUrl, pair, fetchImpl }) {
   const url = parseStagingUrl(stagingUrl);
   const purgedDomains = await purgeShadowingAccessCookies(page, url.hostname);
   const value = await fetchAccessCookie(stagingUrl, pair, { fetchImpl });
+  const accessLoginOrigin = readAccessTokenIssuer(value);
   await stampHostOnlyAccessCookie(page, stagingUrl, value);
   await verifySingleAccessCookie(page, stagingUrl);
-  return { purgedDomains };
+  return { purgedDomains, accessLoginOrigin };
 }

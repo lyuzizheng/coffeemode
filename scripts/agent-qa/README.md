@@ -7,8 +7,8 @@ ledger, allowlist guard, quotas, cleanup.
 ## Closed-beta gate: staging runs `BETA_MODE=0` (BRAWUKA-1043)
 
 The product ships gated (`web/config/app.yaml` → `beta.enabled: true`) and the
-staging deployment opens it: the Dokploy application `coffeemode-web-staging`
-carries `BETA_MODE=0` in its environment. A gate-on staging refuses the part
+staging deployment opens it: the staging application carries `BETA_MODE=0` in
+its environment. A gate-on staging refuses the part
 of the matrix that cannot be admitted — `p0` (anonymous discovery is replaced
 by the beta surface, `/api/cafes` answers 401 before the handler), `p2-search`
 (anonymous `GET /api/search` answers 401), and `p3-social-like` (a per-run
@@ -19,11 +19,10 @@ that persona is on the roster.
 Three consequences for a round:
 
 - The flag is deployment environment, not repo state: it survives redeploys
-  because it lives in the Dokploy application env (saved through
-  `application.saveEnvironment`, reloaded into the swarm service). A run that
-  sees the beta surface or a 401 `unauthorized` on an anonymous product route
-  has found `env-failure:beta-gate-on`, not a product defect — stop and report
-  it instead of spending the round.
+  because it lives in the deployment environment. A run that sees the beta
+  surface or a 401 `unauthorized` on an anonymous product route has found
+  `env-failure:beta-gate-on`, not a product defect — stop and report it
+  instead of spending the round.
 - Never re-enable the gate to "check the beta page" during a journey round.
   The gate's own states are covered by `web/tests/integration/http-beta-gate`
   and `web/scripts/beta-gate-e2e.mjs` (production build, `BETA_MODE=1`). If an
@@ -50,10 +49,10 @@ Three consequences for a round:
 
 The edge ruleset is generated from `beta.enabled`, not from `BETA_MODE`, so a
 `BETA_MODE`-only flip changes neither the ruleset nor its purge obligation
-(`docs/design/beta-gate-v1.md` §9): staging keeps the `/cafes/*` bypass while it
-runs gate-off, responses simply miss shared cache, and the failure the bypass
-prevents — a cached shell outliving the gate — cannot happen. Editing
-`beta.enabled` is the two-step operation, not this flag.
+(`docs/design/beta-gate-v1.md` §9): staging keeps its anonymous document
+bypass while it runs gate-off, responses simply miss shared cache, and the
+failure the bypass prevents — a cached shell outliving the gate — cannot
+happen. Editing `beta.enabled` is the two-step operation, not this flag.
 
 ## Cloudflare Access: per-origin injection (BRAWUKA-508)
 
@@ -106,10 +105,10 @@ paused request is always continued (never left hanging).
 The 2026-11-20 scheduled round died at the Access login page with
 `env-failure:access-cookie-shadowed`. Cause: the QA browser ran on Owner's
 personal ego profile, whose jar is shared with Owner's tabs and every other
-space on it. A session `CF_Authorization` scoped to `.cafemood.app` came along;
-Cloudflare sends one same-name cookie, the parent-domain one won, and every
-Document navigation answered 302 while the host-only cookie the runner had
-stamped sat unused.
+space on it. A session `CF_Authorization` scoped to the parent domain came
+along; Cloudflare sends one same-name cookie, the parent-domain one won, and
+every Document navigation answered 302 while the host-only cookie the runner
+had stamped sat unused.
 
 `access-cookie.mjs` makes the failure unrepresentable in two moves:
 
@@ -117,23 +116,22 @@ stamped sat unused.
    `taskSpace(name, { profileId: resolveAgentQaProfile(await profiles()).id })`
    — ego lite's built-in `Default` profile, never Owner's imported `Profile 1`.
    A missing profile aborts as `env-failure:qa-profile-missing`; there is no
-   fallback. This is also what makes step 2 safe: a `.cafemood.app` cookie in
+   fallback. This is also what makes step 2 safe: a parent-domain cookie in
    the personal profile may be Owner's production Access session.
 2. **One canonical cookie, verified.** `ensureSingleAccessCookie(page, {
-   stagingUrl, pair })` accepts only the exact origin
-   `AGENT_QA_CREDENTIAL_ORIGIN` (`https://staging.cafemood.app`: scheme, host,
-   and port must match) and the URL's own protocol must be `https:` — a
-   `blob:` URL serializes the inner origin, so it is refused before any cookie
-   or request. An Access tenant domain (`*.cloudflareaccess.com`), an
-   alternate port, or plaintext aborts the same way. It then deletes every
-   `CF_Authorization` that would reach the staging host without being host-only
-   at path `/` — parent domains, dotted host domains, and same-name cookies on
-   other paths (scoped `Network.deleteCookies`, never a profile-wide clear) —
-   trades the token pair for a fresh value with a direct Node fetch, stamps it
-   with `Network.setCookie({ url })` — no `domain`, which is what keeps it
+   stagingUrl, pair })` accepts only `AGENT_QA_CREDENTIAL_ORIGIN`: the URL's
+   scheme, host, and port must match it exactly, and the protocol must be
+   `https:` — a `blob:` URL serializes the inner origin, so it is refused
+   before any cookie or request. An Access tenant host, an alternate port, or
+   plaintext aborts the same way. It then deletes every `CF_Authorization`
+   that would reach the staging host without being host-only at path `/` —
+   parent domains, dotted host domains, and same-name cookies on other paths
+   (scoped `Network.deleteCookies`, never a profile-wide clear) — trades the
+   token pair for a fresh value with a direct Node fetch, stamps it with
+   `Network.setCookie({ url })` — no `domain`, which is what keeps it
    host-only — then reads the whole jar back and asserts exactly one canonical
    cookie. Matching follows RFC 6265 §5.4: a bare domain is host-only and
-   matches only its exact host, so a host-only cookie on `cafemood.app` is
+   matches only its exact host, so a host-only cookie on the parent domain is
    never touched. Any violation throws the
    `env-failure:access-cookie-shadowed` signature instead of spending a journey
    round on the login page. The token-pair fetch keeps the probe's own client
@@ -147,42 +145,33 @@ and is cheap enough to call before each journey; the bootstrap returns only
 the purged domains, never a value or token.
 
 Verified on this machine 2026-11-25 against the real Chromium jar in the
-`Default` profile: a stamped `.cafemood.app` decoy is detected and deleted,
-the jar reports every coexisting same-name cookie (including one scoped to
-`/api`), and after `ensureSingleAccessCookie` the jar holds exactly one, domain
-`staging.cafemood.app` at path `/`. Plaintext, an alternate port, an
+`Default` profile: a stamped parent-domain decoy is detected and deleted, the
+jar reports every coexisting same-name cookie (including one scoped to
+`/api`), and after `ensureSingleAccessCookie` the jar holds exactly one,
+host-only on the staging origin at path `/`. Plaintext, an alternate port, an
 unconfigured Access tenant, and a sibling staging host are each refused with
 zero requests and zero cookie writes.
 
-## Manifest is Access-protected: expected redirect, not an env failure (BRAWUKA-1044)
+## Manifest fetch redirects under Access: expected only on a verified 302 (BRAWUKA-1044)
 
-`GET https://staging.cafemood.app/manifest.webmanifest` sits behind the same
-Cloudflare Access application as the rest of the host. Verified 2026-11-27
-against the deployed policy: the staging application covers the whole
-hostname (one `public` destination, no path prefix), there is no second
-application scoped to the manifest path, and no policy uses the `bypass`
-decision — the three policies are two `non_identity` service-token rules and
-one email-domain `allow`, with preflight bypass disabled. An anonymous request
-therefore answers `302` to the Access login page with
-`redirect_url=/manifest.webmanifest`; `/` answers the same way. The manifest
-is not anonymously fetchable.
-
-Decision: keep it protected. Opening the manifest would need a path-scoped
-bypass application — a broadening of anonymous access that needs an Owner
-decision — and no journey verdict depends on the manifest loading. Nor can the
-harness authenticate that fetch: `Manifest` is one of the resource types this
-ego-browser build rejects in `Fetch.enable` (see
+The harness cannot authenticate the manifest fetch: `Manifest` is one of the
+resource types this ego-browser build rejects in `Fetch.enable` (see
 `ACCESS_FETCH_RESOURCE_TYPES`), so a manifest request never pauses for token
-injection, and Chromium sends it without the `CF_Authorization` cookie (CDP on
-the 2026-11-27 round). The redirect is what every staging visitor sees, not a
-symptom of the QA cookie setup.
+injection, and the browser sends it without the session cookie (CDP,
+2026-11-27 round).
 
-The rule: a manifest request that misses the cookie is EXPECTED staging
-behaviour, already covered by the F10 console whitelist. It is never
-`env-failure:access-cookie-not-sent` and must never stop a round. The cookie
-invariant applies to Document navigations and to the same-origin subresources
-the harness intercepts; the manifest's `302` is not a verdict assertion, and
-its origin status stays unverified while Access fronts the host.
+The rule: a manifest GET that misses the cookie is expected ONLY when the
+observed same-origin response is HTTP 302 to the configured Access login.
+Read the response status and target from the network events, record them, then
+continue the journey. A 200 means the fetch carried credentials and is not a
+failure. Any other outcome — 4xx/5xx, a redirect to another target, or no
+observed response — is not this exception and stops the round. The cookie
+invariant still covers Document navigations and every other same-origin
+subresource the harness intercepts. F10 governs only how the redirect is
+reported in the console; it does not relax this check.
+
+Policy evidence and the deployment read live on the private issue
+(BRAWUKA-1044), not here.
 
 ## Secret-bridge contract (F8)
 

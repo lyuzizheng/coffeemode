@@ -8,6 +8,7 @@ import {
   fetchAccessCookie,
   isHostOnlyCookieFor,
   readAccessCookieValue,
+  readAccessTokenIssuer,
   resolveAgentQaProfile,
   shadowingAccessCookies,
   stampHostOnlyAccessCookie,
@@ -219,6 +220,26 @@ describe("agent-QA Access cookie bootstrap (BRAWUKA-1026)", () => {
     });
   });
 
+  describe("Access login origin from the session JWT (BRAWUKA-1047)", () => {
+    function jwt(payload: Record<string, unknown>): string {
+      return `header.${Buffer.from(JSON.stringify(payload)).toString("base64url")}.signature`;
+    }
+
+    it("reads the team origin, normalized to https without a trailing slash", () => {
+      expect(readAccessTokenIssuer(jwt({ iss: "https://QA-Team.cloudflareaccess.com/" }))).toBe(
+        "https://qa-team.cloudflareaccess.com",
+      );
+    });
+
+    it("returns null for an opaque token, a malformed payload, and a non-https issuer", () => {
+      expect(readAccessTokenIssuer("fresh-token")).toBeNull();
+      expect(readAccessTokenIssuer("a.@@@.c")).toBeNull();
+      expect(readAccessTokenIssuer("a.b.c")).toBeNull();
+      expect(readAccessTokenIssuer(jwt({ iss: "http://qa-team.cloudflareaccess.com" }))).toBeNull();
+      expect(readAccessTokenIssuer(jwt({ sub: "user" }))).toBeNull();
+    });
+  });
+
   describe("token-pair trade", () => {
     it("keeps the pair on an Access host and never follows a redirect", async () => {
       const requests: Array<{ url: string; init?: RequestInit }> = [];
@@ -339,7 +360,7 @@ describe("agent-QA Access cookie bootstrap (BRAWUKA-1026)", () => {
       }) as typeof fetch;
 
       await expect(ensureSingleAccessCookie(page, { stagingUrl: STAGING_URL, pair: PAIR, fetchImpl })).resolves.toEqual(
-        { purgedDomains: [".cafemood.app", STAGING_HOST] },
+        { purgedDomains: [".cafemood.app", STAGING_HOST], accessLoginOrigin: null },
       );
 
       expect(jar.filter((cookie) => cookie.name === ACCESS_COOKIE_NAME)).toEqual([
@@ -355,6 +376,18 @@ describe("agent-QA Access cookie bootstrap (BRAWUKA-1026)", () => {
       const stamp = calls.find((call) => call.method === "Network.setCookie");
       expect(stamp?.params).toMatchObject({ url: `https://${STAGING_HOST}/`, path: "/", secure: true, httpOnly: true });
       expect(stamp?.params).not.toHaveProperty("domain");
+    });
+
+    it("returns the JWT issuer origin so the 302 can be pinned to the configured tenant", async () => {
+      const { page } = fakePage([]);
+      const token = `header.${Buffer.from(JSON.stringify({ iss: "https://qa-team.cloudflareaccess.com" })).toString(
+        "base64url",
+      )}.signature`;
+      const fetchImpl = (async () => fakeResponse(200, [`${ACCESS_COOKIE_NAME}=${token}; Path=/`])) as typeof fetch;
+
+      const result = await ensureSingleAccessCookie(page, { stagingUrl: STAGING_URL, pair: PAIR, fetchImpl });
+
+      expect(result.accessLoginOrigin).toBe("https://qa-team.cloudflareaccess.com");
     });
 
 

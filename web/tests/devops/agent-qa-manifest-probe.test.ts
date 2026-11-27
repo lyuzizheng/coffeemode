@@ -102,6 +102,9 @@ describe("manifest response probe (BRAWUKA-1047)", () => {
       expect(verdict.accessLoginUrl).toBe(LOGIN_URL);
       expect(verdict.accessLoginUrl).not.toContain("?");
       expect(verdict.requestCount).toBe(1);
+      expect(verdict.observed).toEqual([
+        { status: 302, destination: LOGIN_URL, failure: null, contentType: null },
+      ]);
       expect(describeManifestVerdict(verdict)).toBe(`HTTP 302 to the Access login page ${LOGIN_URL}`);
     });
 
@@ -142,6 +145,9 @@ describe("manifest response probe (BRAWUKA-1047)", () => {
       expect(verdict.status).toBe(200);
       expect(verdict.contentType).toBe(MANIFEST_CONTENT_TYPE);
       expect(verdict.accessLoginUrl).toBeNull();
+      expect(verdict.observed).toEqual([
+        { status: 200, destination: null, failure: null, contentType: MANIFEST_CONTENT_TYPE },
+      ]);
     });
 
     it("rejects HTTP 200 text/html at the manifest URL — a login or error page is not the manifest", () => {
@@ -152,6 +158,28 @@ describe("manifest response probe (BRAWUKA-1047)", () => {
 
       expect(verdict.accepted).toBe(false);
       expect(describeManifestVerdict(verdict)).toBe("HTTP 200 (text/html; charset=utf-8)");
+    });
+
+    it("keeps the other requests' evidence on an accepted verdict so the run log is complete", () => {
+      const events = [
+        request("9a", MANIFEST_URL),
+        request("9a", LOGIN_URL, "Manifest", {
+          url: MANIFEST_URL,
+          status: 302,
+          headers: { location: LOGIN_URL },
+        }),
+        request("9b", MANIFEST_URL),
+        response("9b", MANIFEST_URL, 404, "text/html"),
+      ];
+
+      const verdict = manifestVerdict(events);
+
+      expect(verdict.accepted).toBe(true);
+      expect(verdict.requestCount).toBe(2);
+      expect(verdict.observed).toEqual([
+        { status: 302, destination: LOGIN_URL, failure: null, contentType: null },
+        { status: 404, destination: null, failure: null, contentType: "text/html" },
+      ]);
     });
 
     it("accepts when a second manifest request is the one that verifies", () => {
@@ -367,6 +395,7 @@ describe("manifest response probe (BRAWUKA-1047)", () => {
 
       expect(error?.message).toContain(MANIFEST_UNVERIFIED_SIGNATURE);
       expect(error?.message).toContain("could not open https://staging.cafemood.app/");
+      expect(error?.message).toContain("Timeout 10000ms exceeded");
     });
 
     it("refuses a non-staging origin before touching the browser", async () => {

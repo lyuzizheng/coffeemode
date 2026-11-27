@@ -141,8 +141,9 @@ had stamped sat unused.
    access and ends the round instead of retrying or spoofing.
 
 `verifySingleAccessCookie(page, stagingUrl)` re-checks the invariant on its own
-and is cheap enough to call before each journey; the bootstrap returns only
-the purged domains, never a value or token.
+and is cheap enough to call before each journey; the bootstrap returns the
+purged domains plus the non-secret JWT issuer origin (`accessLoginOrigin`),
+never a value or token.
 
 Verified on this machine 2026-11-25 against the real Chromium jar in the
 `Default` profile: a stamped parent-domain decoy is detected and deleted, the
@@ -195,8 +196,10 @@ Accept exactly one of these browser-observed shapes:
 
 Every other result — 4xx/5xx, a redirect elsewhere, HTML at the manifest URL,
 or no observed response — is `env-failure:manifest-response-unverified`: stop
-the round and report the observed statuses. Do not fall back to service-token
-request headers.
+the round and report the observed statuses. The first manifest hop is
+authoritative: a redirect to an unapproved destination stays rejected even if
+the chain later returns to the manifest URL with 200. Do not fall back to
+service-token request headers.
 
 `manifest-probe.mjs` implements the correlation and the fail-closed check. Run
 it after `ensureSingleAccessCookie` and before the Access request pump, because
@@ -217,7 +220,9 @@ const verdict = await captureManifestResponse(page, {
 
 A null `accessLoginOrigin` fails closed: the destination cannot be pinned to
 the configured login page. A runner that already drained `page.events()` can
-classify the raw events with the pure helpers instead of re-navigating.
+classify the raw events with the pure helpers instead of re-navigating:
+`summarizeManifestEvidence` needs only the events and `manifestUrl`, while
+`classifyManifestEvidence` also takes `stagingUrl` and `accessLoginOrigin`.
 
 ## Secret-bridge contract (F8)
 

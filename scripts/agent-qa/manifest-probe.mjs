@@ -62,7 +62,6 @@ const ACCESS_LOGIN_PATH_PREFIX = "/cdn-cgi/access/login/";
 /**
  * @typedef {object} ManifestRequest
  * @property {string} requestId CDP request id (stable across redirect hops)
- * @property {string | null} type CDP resource type of the manifest request
  * @property {number | null} status HTTP status of a non-redirect manifest response
  * @property {string | null} contentType `content-type` of a non-redirect response
  * @property {number | null} redirectStatus HTTP status of the manifest's redirect
@@ -237,7 +236,6 @@ export function summarizeManifestEvidence(events, { manifestUrl }) {
         if (!requests.has(requestId)) {
           requests.set(requestId, {
             requestId,
-            type: params.type ?? null,
             status: null,
             contentType: null,
             redirectStatus: null,
@@ -249,7 +247,7 @@ export function summarizeManifestEvidence(events, { manifestUrl }) {
       }
       const record = requests.get(requestId);
       if (record && params.redirectResponse && record.redirectStatus === null && record.status === null) {
-        const source = previousUrl.get(requestId) ?? String(params.redirectResponse.url ?? "");
+        const source = String(params.redirectResponse.url ?? previousUrl.get(requestId) ?? "");
         if (isManifestResourceUrl(source, manifest)) {
           record.redirectStatus = typeof params.redirectResponse.status === "number" ? params.redirectResponse.status : null;
           record.redirectLocation = readHeader(params.redirectResponse.headers, "location");
@@ -357,7 +355,7 @@ export function classifyManifestEvidence(evidence, { stagingUrl, accessLoginOrig
   }
 
   const accepted = content ?? redirect;
-  if (accepted) return accepted;
+  if (accepted) return { ...accepted, observed };
   return {
     accepted: false,
     outcome: null,
@@ -421,10 +419,11 @@ export async function captureManifestResponse(
   await page.events();
   try {
     await page.goto(`${staging.origin}/`, { timeout: timeoutMs });
-  } catch {
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
     throw new Error(
       `${MANIFEST_UNVERIFIED_SIGNATURE} — the probe could not open ${staging.origin}/ to observe GET ${manifestUrl} ` +
-        `within ${timeoutMs}ms; the manifest response stayed unverified.`,
+        `within ${timeoutMs}ms (${reason}); the manifest response stayed unverified.`,
     );
   }
   const deadline = Date.now() + timeoutMs;
